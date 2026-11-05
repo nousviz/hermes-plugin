@@ -72,11 +72,7 @@ def register(ctx) -> None:
         name="nousviz", handler=_status_command,
         description="NousViz connection status and available tools")
 
-    slug = ctx.get_config("telemetry_webhook_slug")
-    if slug:
-        telemetry = Telemetry(
-            _get_client, slug=slug,
-            secret=ctx.get_config("telemetry_webhook_secret"))
-        ctx.register_hook("post_tool_call", telemetry.post_tool_call)
-        ctx.register_hook("on_session_end", telemetry.on_session_end)
-        logger.info("nousviz: telemetry enabled -> webhook slug %r", slug)
+    # Telemetry no-ops until telemetry_webhook_slug is configured (read live).
+    telemetry = Telemetry(_get_client, ctx.get_config)
+    ctx.register_hook("post_tool_call", telemetry.post_tool_call)
+    ctx.register_hook("on_session_end", telemetry.on_session_end)

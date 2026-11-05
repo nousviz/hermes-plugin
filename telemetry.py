@@ -24,18 +24,28 @@ FLUSH_EVERY = 25
 
 
 class Telemetry:
+    """Reads ``telemetry_webhook_slug`` live from plugin config, so telemetry is a
+    no-op until configured and can be enabled without code changes."""
+
     def __init__(self, client_factory: Callable[[], NousVizClient],
-                 slug: str, secret: Optional[str] = None):
+                 get_config: Callable[[str], Optional[str]]):
         self._client_factory = client_factory
-        self._slug = slug
-        self._secret = secret
+        self._get_config = get_config
         self._buffer: list[dict[str, Any]] = []
         self._lock = threading.Lock()
+
+    def _slug(self) -> Optional[str]:
+        try:
+            return self._get_config("telemetry_webhook_slug")
+        except Exception:
+            return None
 
     # Hook: signature-inspected by Hermes — declare only the fields we use.
     def post_tool_call(self, tool_name: str = "", status: Optional[str] = None,
                        duration_ms: int = 0, session_id: Optional[str] = None,
                        task_id: Optional[str] = None, **_kw) -> None:
+        if not self._slug():
+            return
         event = {
             "ts": time.time(), "type": "tool_call", "tool": tool_name,
             "status": status, "duration_ms": duration_ms,
@@ -51,14 +61,21 @@ class Telemetry:
         self.flush()
 
     def flush(self) -> None:
+        slug = self._slug()
         with self._lock:
             if not self._buffer:
                 return
             events, self._buffer = self._buffer, []
+        if not slug:
+            return
         try:
+            secret = None
+            try:
+                secret = self._get_config("telemetry_webhook_secret")
+            except Exception:
+                pass
             self._client_factory().push(
-                self._slug, {"source": "hermes-agent", "events": events},
-                secret=self._secret)
+                slug, {"source": "hermes-agent", "events": events}, secret=secret)
             logger.debug("nousviz telemetry: flushed %d events", len(events))
         except Exception as e:  # never raise into hook dispatch
             logger.debug("nousviz telemetry flush failed (%d events dropped): %s",
