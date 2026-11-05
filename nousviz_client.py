@@ -1,0 +1,145 @@
+"""Minimal HTTP client for a NousViz >= 1.0.6 server.
+
+Every endpoint used here was verified against nousviz-app v1.0.6 source:
+
+- POST /api/auth/login            {email, password} -> {token, expires_at, user}
+  (routes/auth.py; auth header on all later calls: X-Session-Token)
+- POST /api/query                 {sql, db_engine?, database?, max_rows?}
+                                  -> {columns, types, rows, row_count}   (routes/query.py)
+- POST /api/dashboards/           {name, description?, widgets, layout?, sources}
+                                  (routes/dashboards.py, needs dashboards.write)
+- PUT  /api/dashboards/{slug}     same body, full replace
+- POST /api/alerts                AlertCreate fields (routes/alerts.py, needs alerts.write)
+- POST /api/webhooks/in/{slug}    raw JSON body; optional HMAC-SHA256 of the body
+                                  in the x-webhook-signature header
+                                  (plugins/utilities/webhooks/api/routes.py)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+import threading
+from typing import Any, Optional
+
+import requests
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_TIMEOUT = 20  # seconds
+
+
+class NousVizError(Exception):
+    """Raised for auth/config problems and non-2xx API responses."""
+
+
+class NousVizClient:
+    """Session-token client. Logs in lazily, re-logs-in once on a 401."""
+
+    def __init__(self, base_url: str, email: str, password: str):
+        if not base_url:
+            raise NousVizError("NousViz base_url is not configured")
+        self.base_url = base_url.rstrip("/")
+        self.email = email
+        self.password = password
+        self._token: Optional[str] = None
+        self._lock = threading.Lock()
+
+    # ── auth ──────────────────────────────────────────────────────────
+
+    def _login(self) -> str:
+        resp = requests.post(
+            f"{self.base_url}/api/auth/login",
+            json={"email": self.email, "password": self.password},
+            timeout=DEFAULT_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            raise NousVizError(f"NousViz login failed ({resp.status_code}): {resp.text[:300]}")
+        token = resp.json().get("token")
+        if not token:
+            raise NousVizError("NousViz login response had no token")
+        return token
+
+    def _request(self, method: str, path: str, *, json_body: Any = None,
+                 _retry: bool = True) -> Any:
+        with self._lock:
+            if self._token is None:
+                self._token = self._login()
+            token = self._token
+        resp = requests.request(
+            method, f"{self.base_url}{path}",
+            json=json_body,
+            headers={"X-Session-Token": token},
+            timeout=DEFAULT_TIMEOUT,
+        )
+        if resp.status_code == 401 and _retry:
+            with self._lock:
+                self._token = None
+            return self._request(method, path, json_body=json_body, _retry=False)
+        if resp.status_code >= 400:
+            raise NousVizError(f"{method} {path} -> {resp.status_code}: {resp.text[:500]}")
+        try:
+            return resp.json()
+        except ValueError:
+            return {"raw": resp.text}
+
+    def check_connection(self) -> dict:
+        """Login (or reuse the session) and report who we are."""
+        with self._lock:
+            self._token = self._login()
+        return {"ok": True, "base_url": self.base_url, "email": self.email}
+
+    # ── data ──────────────────────────────────────────────────────────
+
+    def query(self, sql: str, db_engine: Optional[str] = None,
+              database: Optional[str] = None, max_rows: Optional[int] = None) -> dict:
+        body: dict[str, Any] = {"sql": sql}
+        if db_engine:
+            body["db_engine"] = db_engine
+        if database:
+            body["database"] = database
+        if max_rows:
+            body["max_rows"] = max_rows
+        return self._request("POST", "/api/query", json_body=body)
+
+    def push(self, slug: str, payload: Any, secret: Optional[str] = None) -> dict:
+        """Send JSON to an inbound webhook endpoint (no session token needed)."""
+        body = json.dumps(payload).encode()
+        headers = {"Content-Type": "application/json"}
+        if secret:
+            headers["x-webhook-signature"] = hmac.new(
+                secret.encode(), body, hashlib.sha256).hexdigest()
+        resp = requests.post(f"{self.base_url}/api/webhooks/in/{slug}",
+                             data=body, headers=headers, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code >= 400:
+            raise NousVizError(f"webhook push -> {resp.status_code}: {resp.text[:300]}")
+        return resp.json()
+
+    # ── dashboards ────────────────────────────────────────────────────
+
+    def create_dashboard(self, name: str, description: Optional[str] = None,
+                         widgets: Optional[list] = None, layout: Optional[dict] = None,
+                         sources: Optional[list] = None) -> dict:
+        return self._request("POST", "/api/dashboards/", json_body={
+            "name": name, "description": description,
+            "widgets": widgets or [], "layout": layout, "sources": sources or [],
+        })
+
+    def update_dashboard(self, slug: str, name: str, description: Optional[str] = None,
+                         widgets: Optional[list] = None, layout: Optional[dict] = None,
+                         sources: Optional[list] = None) -> dict:
+        return self._request("PUT", f"/api/dashboards/{slug}", json_body={
+            "name": name, "description": description,
+            "widgets": widgets or [], "layout": layout, "sources": sources or [],
+        })
+
+    def dashboard_url(self, slug: str) -> str:
+        return f"{self.base_url}/dashboards/{slug}"
+
+    # ── alerts ────────────────────────────────────────────────────────
+
+    def create_alert(self, fields: dict) -> dict:
+        """Pass-through to POST /api/alerts; the server validates AlertCreate fields."""
+        return self._request("POST", "/api/alerts", json_body=fields)

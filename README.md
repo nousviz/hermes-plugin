@@ -1,0 +1,71 @@
+# nousviz — a data platform for your Hermes agent
+
+Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) to a self-hosted
+[NousViz](https://github.com/nousviz/nousviz-app) install (v1.0.6+) and your agent gets
+what agents are missing: somewhere real to put data, dashboards that outlive the
+conversation, and alerts that call the agent back.
+
+**NousViz is the system of record. Hermes is data in motion.** The agent explores
+conversationally; when a view proves useful it becomes a permanent dashboard.
+
+## What the agent can do
+
+| Tool | What it does |
+|---|---|
+| `nousviz_query` | Read-only SQL over the platform's datasets (Postgres / ClickHouse / MySQL) |
+| `nousviz_push` | Land collected data via an inbound webhook endpoint |
+| `nousviz_create_dashboard` | Turn an exploration into a persistent dashboard, returns the URL |
+| `nousviz_create_alert` | Threshold / drop / rise / zero-check alerts on any numeric metric |
+| `nousviz_dashboard_link` | Share the URL of an existing dashboard |
+
+Plus `/nousviz` for connection status, and optional **Mission Control telemetry**:
+`post_tool_call` hooks stream the agent's own activity (tool name, status, duration —
+never arguments or results) into a NousViz dashboard.
+
+## The loop
+
+1. *"Track our signups daily; alert me if they drop 10%."*
+2. Hermes cron collects → `nousviz_push` stores → `nousviz_create_dashboard` charts →
+   `nousviz_create_alert` watches.
+3. The alert fires → NousViz's outbound webhook notifies Hermes → the agent
+   investigates (deploys? traffic mix? competitor promo?) and messages you the *why*,
+   with the chart.
+
+Deterministic work stays deterministic (cron + alert engine). The agent does what
+logic can't: setup from a sentence, open-ended diagnosis, and change by conversation.
+
+## Install
+
+```bash
+hermes plugins install <this-repo-url>   # or by catalog name once listed
+```
+
+Configure in `~/.hermes/config.yaml`:
+
+```yaml
+plugins:
+  entries:
+    nousviz:
+      settings:
+        base_url: "https://your-nousviz.example.com"
+        email: "hermes-agent@example.com"        # a NousViz account for the agent
+        # optional — enables Mission Control telemetry:
+        telemetry_webhook_slug: "hermes-telemetry"
+        telemetry_webhook_secret: "..."
+```
+
+The NousViz account password is read from the Hermes secret scope as
+`NOUSVIZ_PASSWORD` (never stored in plugin config). Create a dedicated NousViz user
+for the agent (analyst role is enough: it needs `query.run`, `dashboards.write`,
+`alerts.write`).
+
+## Requirements
+
+- NousViz >= 1.0.6 (uses only stock endpoints: `/api/auth/login`, `/api/query`,
+  `/api/dashboards/`, `/api/alerts`, `/api/webhooks/in/<slug>`)
+- Network access from Hermes to your NousViz server (disclosed: this plugin makes
+  HTTPS requests to the `base_url` you configure, and nowhere else)
+
+## License
+
+MIT
