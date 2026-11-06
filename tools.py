@@ -95,7 +95,9 @@ CREATE_ALERT_SCHEMA = _schema(
     "nousviz_create_alert",
     "Create an alert rule in NousViz on a numeric metric (threshold drop/rise/absolute or "
     "zero-check), delivered by email or webhook. Use so the user is notified — and the agent "
-    "can be called back via an outbound webhook — when the numbers move.",
+    "can be called back via an outbound webhook — when the numbers move. Alerts watch a "
+    "plugin dataset: data pushed via nousviz_push lives in plugin_id 'webhooks', dataset "
+    "'webhook_events'.",
     {"name": _str("Internal alert name. Required."),
      "label": _str("Human-readable label shown in notifications. Required."),
      "description": _str("What this alert watches and why."),
@@ -110,7 +112,7 @@ CREATE_ALERT_SCHEMA = _schema(
      "cooldown_hours": {"type": "integer", "description": "Hours to suppress repeats after firing."},
      "notify_channels": {"type": "array", "items": {"type": "string"},
                          "description": "Delivery channels (email / webhook ids)."}},
-    required=["name", "label", "metric", "condition_type"],
+    required=["name", "label", "plugin_id", "dataset", "metric", "condition_type"],
 )
 
 DASHBOARD_LINK_SCHEMA = _schema(
