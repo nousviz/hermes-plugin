@@ -22,6 +22,37 @@ Plus `/nousviz` for connection status, and optional **Mission Control telemetry*
 `post_tool_call` hooks stream the agent's own activity (tool name, status, duration —
 never arguments or results) into a NousViz dashboard.
 
+## Widget cookbook
+
+`nousviz_create_dashboard` takes real NousViz widget JSON (shapes verified against the
+v1.0.6 renderer). A 12-column grid; each widget is `{id, type, config, layout:{x,y,w,h}}`.
+Set the engine once per dashboard with `layout: {"db_engine": "postgres"|"clickhouse"|"mysql"}`
+(default postgres) and write every widget's `custom_sql` in that dialect.
+
+| Type | config | SQL contract |
+|---|---|---|
+| `kpi` | `{label, custom_sql, format?}` | one row, column named `value` |
+| `line_chart` / `bar_chart` / `stacked_bar_chart` | `{title, custom_sql, x, y: [...], labels?}` | x column + one numeric column per `y` entry |
+| `table` | `{title, custom_sql, columns: [{field,label}]}` | columns matching `field`s |
+| `text` / `heading` / `divider` | `{text}` / `{text, level?}` / `{}` | none |
+
+```json
+{
+  "name": "Signups",
+  "layout": {"db_engine": "postgres"},
+  "widgets": [
+    {"id": "total", "type": "kpi",
+     "config": {"label": "Signups (30d)",
+                "custom_sql": "SELECT COUNT(*) AS value FROM signups WHERE day > now() - interval '30 days'"},
+     "layout": {"x": 0, "y": 0, "w": 4, "h": 3}},
+    {"id": "trend", "type": "line_chart",
+     "config": {"title": "Daily signups", "x": "day", "y": ["signups"],
+                "custom_sql": "SELECT day::text AS day, COUNT(*)::int AS signups FROM signups GROUP BY 1 ORDER BY 1"},
+     "layout": {"x": 0, "y": 3, "w": 12, "h": 6}}
+  ]
+}
+```
+
 ## The loop
 
 1. *"Track our signups daily; alert me if they drop 10%."*

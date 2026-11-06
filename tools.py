@@ -77,18 +77,63 @@ PUSH_SCHEMA = _schema(
     required=["slug", "payload"],
 )
 
+_WIDGET_ITEM_SCHEMA = {
+    "type": "object",
+    "description": "One widget. Shape verified against the NousViz v1.0.6 renderer.",
+    "properties": {
+        "id": {"type": "string", "description": "Unique kebab-case id within the dashboard."},
+        "type": {"type": "string",
+                 "enum": ["heading", "text", "divider", "kpi", "table",
+                          "line_chart", "bar_chart", "stacked_bar_chart"]},
+        "config": {
+            "type": "object",
+            "description":
+                "Per-type config. kpi: {label, custom_sql, format?: currency|number|percent} — "
+                "SQL must return ONE row with a column named exactly `value`. "
+                "line_chart/bar_chart/stacked_bar_chart: {title, custom_sql, x: '<col>', "
+                "y: ['<col>', ...], labels?: ['<display name>', ...]} — SQL returns the x column "
+                "plus one numeric column per y entry, ordered by x. "
+                "table: {title, custom_sql, columns: [{field, label}, ...]}. "
+                "text: {text} (plain text, newlines ok). heading: {text, level?: h1|h2|h3}. "
+                "divider: {}. custom_sql must be read-only SELECT, written in the dashboard's "
+                "db_engine dialect.",
+            "additionalProperties": True,
+        },
+        "layout": {
+            "type": "object",
+            "description": "Grid placement on a 12-column grid: {x, y, w, h}. x+w must be <= 12. "
+                           "Typical: KPIs w=4 h=3, charts w=6 h=6, full-width text w=12 h=3-4.",
+            "properties": {"x": {"type": "integer"}, "y": {"type": "integer"},
+                           "w": {"type": "integer"}, "h": {"type": "integer"}},
+            "additionalProperties": True,
+        },
+    },
+    "required": ["id", "type", "config", "layout"],
+    "additionalProperties": True,
+}
+
 CREATE_DASHBOARD_SCHEMA = _schema(
     "nousviz_create_dashboard",
-    "Create a dashboard in NousViz with the given widgets and layout, and return its slug and "
-    "URL. Use after exploring data with nousviz_query, to turn a useful view into a persistent "
-    "dashboard the user keeps. Widgets/layout/sources use NousViz's dashboard JSON shapes.",
+    "Create a dashboard in NousViz with the given widgets and return its slug and URL. Use "
+    "after exploring data with nousviz_query, to turn a useful view into a persistent "
+    "dashboard the user keeps. Workflow: explore with nousviz_query, verify each widget's SQL "
+    "returns the exact column shape its type needs, then create. The dashboard queries the "
+    "engine named in layout.db_engine (postgres default, or clickhouse/mysql) — write every "
+    "widget's custom_sql in that engine's dialect, and test it via nousviz_query with the same "
+    "db_engine first.",
     {"name": _str("Dashboard name. Required."),
      "description": _str("One-line description of what the dashboard shows."),
-     "widgets": {"type": "array", "description": "NousViz widget definitions.", "items": {"type": "object"}},
-     "layout": {"type": "object", "description": "Grid layout keyed by widget id.",
+     "widgets": {"type": "array", "description": "Widget definitions (see item schema).",
+                 "items": _WIDGET_ITEM_SCHEMA},
+     "layout": {"type": "object",
+                "description": "Dashboard-level options. Set {\"db_engine\": \"postgres\"|"
+                               "\"clickhouse\"|\"mysql\"} to pick which engine ALL widget "
+                               "custom_sql runs against (default postgres). One engine per "
+                               "dashboard.",
                 "additionalProperties": True},
-     "sources": {"type": "array", "description": "Data sources the dashboard reads.", "items": {"type": "object"}}},
-    required=["name"],
+     "sources": {"type": "array", "description": "Data sources the dashboard reads (optional metadata).",
+                 "items": {"type": "object"}}},
+    required=["name", "widgets"],
 )
 
 CREATE_ALERT_SCHEMA = _schema(
