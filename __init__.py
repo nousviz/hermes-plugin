@@ -48,12 +48,23 @@ def _get_client() -> NousVizClient:
 
 
 def _status_command(raw_args: str) -> str:
-    """/nousviz — show connection status."""
+    """/nousviz — connection status; /nousviz mission-control — provision the dashboard."""
+    arg = (raw_args or "").strip().lower()
+    if arg == "mission-control":
+        try:
+            from . import mission_control
+            result = mission_control.provision(_get_client())
+            return (f"📊 Mission Control {result['provisioned']}: {result['url']}\n"
+                    f"It charts this agent's telemetry (tool calls, errors, sessions). "
+                    f"Telemetry streams when telemetry_webhook_slug is configured.")
+        except NousVizError as e:
+            return f"❌ Mission Control provisioning failed: {e}"
     try:
         info = _get_client().check_connection()
         return (f"✅ Connected to NousViz at {info['base_url']} as {info['email']}.\n"
                 f"Tools: nousviz_query, nousviz_push, nousviz_create_dashboard, "
-                f"nousviz_create_alert, nousviz_dashboard_link.")
+                f"nousviz_create_alert, nousviz_dashboard_link.\n"
+                f"Commands: /nousviz mission-control — provision the agent-activity dashboard.")
     except NousVizError as e:
         return f"❌ NousViz connection failed: {e}"
 
@@ -69,8 +80,8 @@ def register(ctx) -> None:
                           handler=handler, emoji=emoji)
 
     ctx.register_command(
-        name="nousviz", handler=_status_command,
-        description="NousViz connection status and available tools")
+        name="nousviz", handler=_status_command, args_hint="[mission-control]",
+        description="NousViz connection status; 'mission-control' provisions the agent-activity dashboard")
 
     # Telemetry no-ops until telemetry_webhook_slug is configured (read live).
     telemetry = Telemetry(_get_client, ctx.get_config)
