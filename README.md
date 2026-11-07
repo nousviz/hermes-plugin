@@ -16,9 +16,14 @@ conversationally; when a view proves useful it becomes a permanent dashboard.
 | `nousviz_push` | Land collected data via an inbound webhook endpoint |
 | `nousviz_create_dashboard` | Turn an exploration into a persistent dashboard, returns the URL |
 | `nousviz_create_alert` | Threshold / drop / rise / zero-check alerts on any numeric metric |
-| `nousviz_dashboard_link` | Share the URL of an existing dashboard |
+| `nousviz_dashboard_link` | Return the URL of an existing dashboard |
+| `nousviz_share_dashboard` | Create a public share link a human can open without signing in |
 
-Plus `/nousviz` for connection status, and optional **Mission Control telemetry**:
+Every tool takes an optional `instance` argument to target one of several
+configured NousViz servers (see [Multiple NousViz servers](#multiple-nousviz-servers)).
+
+Plus `/nousviz` for connection status (`/nousviz list` and `/nousviz use <name>`
+switch between configured servers), and optional **Mission Control telemetry**:
 `post_tool_call` hooks stream the agent's own activity (tool name, status, duration —
 never arguments or results) into a NousViz dashboard.
 
@@ -89,6 +94,36 @@ The NousViz account password is read from the Hermes secret scope as
 `NOUSVIZ_PASSWORD` (never stored in plugin config). Create a dedicated NousViz user
 for the agent (analyst role is enough: it needs `query.run`, `dashboards.write`,
 `alerts.write`).
+
+### Multiple NousViz servers
+
+To connect one agent to several NousViz installs, use an `instances` map instead
+of (or alongside) the flat `base_url`/`email`:
+
+```yaml
+plugins:
+  entries:
+    nousviz:
+      settings:
+        default_instance: "affiliate"     # optional; used when none is active
+        instances:
+          affiliate:
+            base_url: "https://affiliate.example.com"
+            email: "hermes-agent@example.com"
+            # password_secret: "NOUSVIZ_PASSWORD_AFFILIATE"  # optional override
+          complaints:
+            base_url: "https://complaints.example.com"
+            email: "hermes-agent@example.com"
+```
+
+Each instance's password comes from the secret scope: the `password_secret` key if
+set, otherwise `NOUSVIZ_PASSWORD` for an instance literally named `default` and
+`NOUSVIZ_PASSWORD_<NAME>` (name upper-cased, non-alphanumerics → `_`) for any other
+— e.g. `NOUSVIZ_PASSWORD_AFFILIATE`. Switch the active instance with
+`/nousviz use <name>` (remembered per Hermes profile), see them with
+`/nousviz list`, or target one for a single call via each tool's `instance`
+argument. The flat single-server form still works and is treated as an instance
+named `default`.
 
 ## Requirements
 

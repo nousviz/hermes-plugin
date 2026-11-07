@@ -1,6 +1,22 @@
 # Changelog
 
-## 0.1.0 — scaffold (unreleased)
+## 0.2.0 — multiple servers
+
+- One agent can now connect to several NousViz installs. Configure an
+  `instances` map (`{<name>: {base_url, email, password_secret?}}`) with an
+  optional `default_instance`; each instance's password comes from the secret
+  scope (`NOUSVIZ_PASSWORD` for `default`, `NOUSVIZ_PASSWORD_<NAME>` otherwise,
+  or a per-instance `password_secret`).
+- `/nousviz list` shows configured instances and which is active;
+  `/nousviz use <name>` switches the active instance, remembered per Hermes
+  profile (via profile-scoped plugin state).
+- Every tool accepts an optional `instance` argument to target one server for a
+  single call without switching the active one.
+- The flat single-server config (`base_url` + `email` + `NOUSVIZ_PASSWORD`) is
+  unchanged and is treated as an instance named `default` — fully backward
+  compatible.
+
+## 0.1.0 — scaffold
 
 - Six tools: `nousviz_query`, `nousviz_push`, `nousviz_create_dashboard`,
   `nousviz_create_alert`, `nousviz_dashboard_link`, `nousviz_share_dashboard`.

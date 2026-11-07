@@ -16,10 +16,11 @@ from .nousviz_client import NousVizClient, NousVizError
 logger = logging.getLogger(__name__)
 
 # Set by register() in __init__.py so handlers can reach config/secrets.
-_get_client: Optional[Callable[[], NousVizClient]] = None
+# The factory accepts an optional instance name (multi-instance support).
+_get_client: Optional[Callable[..., NousVizClient]] = None
 
 
-def set_client_factory(factory: Callable[[], NousVizClient]) -> None:
+def set_client_factory(factory: Callable[..., NousVizClient]) -> None:
     global _get_client
     _get_client = factory
 
@@ -32,16 +33,25 @@ def _err(message: str) -> str:
     return json.dumps({"ok": False, "error": message})
 
 
-def _client() -> NousVizClient:
+def _client(instance: Optional[str] = None) -> NousVizClient:
     if _get_client is None:
         raise NousVizError("nousviz plugin not initialised")
-    return _get_client()
+    return _get_client(instance)
 
 
 # ── schemas ──────────────────────────────────────────────────────────
 
 def _str(description: str) -> dict:
     return {"type": "string", "description": description}
+
+
+# Optional target-instance selector shared by every tool. Omit to use the
+# active instance (set with /nousviz use <name>). See /nousviz list.
+_INSTANCE_PROP = {
+    "instance": _str(
+        "Optional NousViz instance name to target when several are configured "
+        "(see /nousviz list). Defaults to the active instance.")
+}
 
 
 def _schema(name: str, description: str, properties: dict, required: list | None = None) -> dict:
@@ -61,7 +71,8 @@ QUERY_SCHEMA = _schema(
      "db_engine": {"type": "string", "enum": ["postgres", "clickhouse", "mysql"],
                    "description": "Engine to run against. Default postgres."},
      "database": _str("Optional database name for engines that need one."),
-     "max_rows": {"type": "integer", "description": "Row cap for the result. Server enforces its own maximum."}},
+     "max_rows": {"type": "integer", "description": "Row cap for the result. Server enforces its own maximum."},
+     **_INSTANCE_PROP},
     required=["sql"],
 )
 
@@ -73,7 +84,8 @@ PUSH_SCHEMA = _schema(
     {"slug": _str("The inbound webhook endpoint slug (from NousViz > Webhooks). Required."),
      "payload": {"type": "object", "description": "The JSON object to store. Required.",
                  "additionalProperties": True},
-     "secret": _str("Optional endpoint secret; when set, the request is HMAC-signed.")},
+     "secret": _str("Optional endpoint secret; when set, the request is HMAC-signed."),
+     **_INSTANCE_PROP},
     required=["slug", "payload"],
 )
 
@@ -132,7 +144,8 @@ CREATE_DASHBOARD_SCHEMA = _schema(
                                "dashboard.",
                 "additionalProperties": True},
      "sources": {"type": "array", "description": "Data sources the dashboard reads (optional metadata).",
-                 "items": {"type": "object"}}},
+                 "items": {"type": "object"}},
+     **_INSTANCE_PROP},
     required=["name", "widgets"],
 )
 
@@ -156,7 +169,8 @@ CREATE_ALERT_SCHEMA = _schema(
      "check_period": _str("Comparison window (as accepted by NousViz)."),
      "cooldown_hours": {"type": "integer", "description": "Hours to suppress repeats after firing."},
      "notify_channels": {"type": "array", "items": {"type": "string"},
-                         "description": "Delivery channels (email / webhook ids)."}},
+                         "description": "Delivery channels (email / webhook ids)."},
+     **_INSTANCE_PROP},
     required=["name", "label", "plugin_id", "dataset", "metric", "condition_type"],
 )
 
@@ -165,7 +179,8 @@ DASHBOARD_LINK_SCHEMA = _schema(
     "Return the full URL for an existing NousViz dashboard slug. Note: dashboards the agent "
     "creates are owned by the agent's account, so a plain dashboard URL will not open for other "
     "users — use nousviz_share_dashboard to get a link the user can actually view.",
-    {"slug": _str("The dashboard slug. Required.")},
+    {"slug": _str("The dashboard slug. Required."),
+     **_INSTANCE_PROP},
     required=["slug"],
 )
 
@@ -178,7 +193,8 @@ SHARE_DASHBOARD_SCHEMA = _schema(
     {"slug": _str("The dashboard slug to share. Required."),
      "title": _str("Optional title shown on the shared page."),
      "password": _str("Optional password to protect the link."),
-     "expires_hours": {"type": "integer", "description": "Link lifetime in hours (default 168 = 7 days)."}},
+     "expires_hours": {"type": "integer", "description": "Link lifetime in hours (default 168 = 7 days)."},
+     **_INSTANCE_PROP},
     required=["slug"],
 )
 
@@ -187,7 +203,7 @@ SHARE_DASHBOARD_SCHEMA = _schema(
 
 def handle_query(args: dict, **_kw) -> str:
     try:
-        return _ok(_client().query(
+        return _ok(_client(args.get("instance")).query(
             sql=args["sql"], db_engine=args.get("db_engine"),
             database=args.get("database"), max_rows=args.get("max_rows")))
     except (NousVizError, KeyError) as e:
@@ -196,7 +212,7 @@ def handle_query(args: dict, **_kw) -> str:
 
 def handle_push(args: dict, **_kw) -> str:
     try:
-        return _ok(_client().push(
+        return _ok(_client(args.get("instance")).push(
             slug=args["slug"], payload=args["payload"], secret=args.get("secret")))
     except (NousVizError, KeyError) as e:
         return _err(str(e))
@@ -204,7 +220,7 @@ def handle_push(args: dict, **_kw) -> str:
 
 def handle_create_dashboard(args: dict, **_kw) -> str:
     try:
-        client = _client()
+        client = _client(args.get("instance"))
         result = client.create_dashboard(
             name=args["name"], description=args.get("description"),
             widgets=args.get("widgets"), layout=args.get("layout"),
@@ -227,7 +243,7 @@ def handle_create_dashboard(args: dict, **_kw) -> str:
 
 def handle_share_dashboard(args: dict, **_kw) -> str:
     try:
-        return _ok(_client().create_share(
+        return _ok(_client(args.get("instance")).create_share(
             slug=args["slug"], title=args.get("title"),
             password=args.get("password"),
             expires_hours=int(args.get("expires_hours") or 168)))
@@ -238,14 +254,16 @@ def handle_share_dashboard(args: dict, **_kw) -> str:
 def handle_create_alert(args: dict, **_kw) -> str:
     try:
         # Pass through only what the agent provided; the server validates the rest.
-        return _ok(_client().create_alert({k: v for k, v in args.items() if v is not None}))
+        # 'instance' selects the target server and is not part of the alert body.
+        fields = {k: v for k, v in args.items() if v is not None and k != "instance"}
+        return _ok(_client(args.get("instance")).create_alert(fields))
     except NousVizError as e:
         return _err(str(e))
 
 
 def handle_dashboard_link(args: dict, **_kw) -> str:
     try:
-        return _ok({"url": _client().dashboard_url(args["slug"])})
+        return _ok({"url": _client(args.get("instance")).dashboard_url(args["slug"])})
     except (NousVizError, KeyError) as e:
         return _err(str(e))
 

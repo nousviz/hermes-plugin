@@ -1,25 +1,34 @@
 """nousviz — give Hermes a data platform.
 
-Connects Hermes to a self-hosted NousViz (>= 1.0.6) install:
+Connects Hermes to one or more self-hosted NousViz (>= 1.0.6) installs:
 
 - ``nousviz_query``            SQL over the platform's data (read-only)
 - ``nousviz_push``             land collected data via inbound webhooks
 - ``nousviz_create_dashboard`` turn an exploration into a persistent dashboard
 - ``nousviz_create_alert``     get notified (and called back) when numbers move
 - ``nousviz_dashboard_link``   share a dashboard URL
-- ``/nousviz``                 connection status
+- ``nousviz_share_dashboard``  public share link a human can open
+- ``/nousviz``                 connection status + instance switching
 - optional telemetry hooks     stream the agent's own tool activity into a
                                NousViz "Mission Control" dashboard
 
-Config (``plugins.entries.nousviz.settings``): ``base_url``, ``email``,
-optional ``telemetry_webhook_slug`` + ``telemetry_webhook_secret``.
-Password comes from the Hermes secret scope as ``NOUSVIZ_PASSWORD`` —
-never from plugin config.
+Config (``plugins.entries.nousviz.settings``). Two forms, both supported:
+
+- Single server (legacy): ``base_url`` + ``email``; password in the Hermes
+  secret scope as ``NOUSVIZ_PASSWORD``. Treated as an instance named ``default``.
+- Multiple servers: an ``instances`` map, ``{<name>: {base_url, email,
+  password_secret?}}``, plus optional ``default_instance``. Each instance's
+  password comes from the secret scope: ``password_secret`` if set, else
+  ``NOUSVIZ_PASSWORD`` for ``default`` and ``NOUSVIZ_PASSWORD_<NAME>`` otherwise.
+
+Passwords never live in plugin config. The active instance is remembered
+per Hermes profile and switched with ``/nousviz use <name>``.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 
 from .nousviz_client import NousVizClient, NousVizError
 from . import tools as nv_tools
@@ -27,30 +36,133 @@ from .telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
 
-_client: NousVizClient | None = None
+_clients: dict[str, NousVizClient] = {}
 _ctx = None
 
 
-def _get_client() -> NousVizClient:
-    """Build (once) a client from plugin config + secret scope."""
-    global _client
-    if _client is None:
-        base_url = _ctx.get_config("base_url") if _ctx else None
-        email = _ctx.get_config("email") if _ctx else None
-        from agent.secret_scope import get_secret
-        password = get_secret("NOUSVIZ_PASSWORD")
-        if not base_url or not email or not password:
+def _secret(name: str) -> str | None:
+    from agent.secret_scope import get_secret
+    try:
+        return get_secret(name)
+    except Exception:  # pragma: no cover - secret scope absent in some contexts
+        return None
+
+
+def _secret_key_for(instance: str) -> str:
+    """Default secret-scope key for an instance: ``NOUSVIZ_PASSWORD`` for the
+    ``default`` instance, ``NOUSVIZ_PASSWORD_<NAME>`` for any other."""
+    if instance == "default":
+        return "NOUSVIZ_PASSWORD"
+    slug = re.sub(r"[^A-Z0-9]+", "_", instance.upper()).strip("_")
+    return f"NOUSVIZ_PASSWORD_{slug}"
+
+
+def _instances_config() -> dict[str, dict]:
+    """Resolve configured instances to ``{name: {base_url, email, password_secret?}}``.
+
+    Merges the legacy flat ``base_url``/``email`` (as an instance named
+    ``default``) with an optional ``instances`` map.
+    """
+    if _ctx is None:
+        return {}
+    out: dict[str, dict] = {}
+    base_url = _ctx.get_config("base_url")
+    email = _ctx.get_config("email")
+    if base_url and email:
+        out["default"] = {"base_url": base_url, "email": email}
+    instances = _ctx.get_config("instances") or {}
+    if isinstance(instances, dict):
+        for name, spec in instances.items():
+            if isinstance(spec, dict) and spec.get("base_url") and spec.get("email"):
+                out[str(name)] = {
+                    "base_url": spec["base_url"],
+                    "email": spec["email"],
+                    "password_secret": spec.get("password_secret"),
+                }
+    return out
+
+
+def _resolve_instance(explicit: str | None = None) -> str:
+    """Pick the instance name to use: explicit arg, else the remembered active
+    one, else config ``default_instance``, else ``default``, else the first."""
+    instances = _instances_config()
+    if not instances:
+        raise NousVizError(
+            "NousViz is not configured. Set plugins.entries.nousviz.settings.base_url "
+            "and .email (single server), or a settings.instances map (multiple "
+            "servers), in config.yaml, and provide the matching password secret.")
+    if explicit:
+        if explicit not in instances:
             raise NousVizError(
-                "NousViz is not configured. Set plugins.entries.nousviz.settings.base_url "
-                "and .email in config.yaml, and provide the NOUSVIZ_PASSWORD secret.")
-        _client = NousVizClient(base_url=base_url, email=email, password=password)
-    return _client
+                f"Unknown NousViz instance '{explicit}'. Configured: "
+                f"{', '.join(sorted(instances))}.")
+        return explicit
+    active = _ctx.state.get("active_instance") if _ctx else None
+    if active in instances:
+        return active
+    cfg_default = _ctx.get_config("default_instance") if _ctx else None
+    if cfg_default in instances:
+        return cfg_default
+    if "default" in instances:
+        return "default"
+    return sorted(instances)[0]
+
+
+def _get_client(instance: str | None = None) -> NousVizClient:
+    """Build (once per instance) a client from config + secret scope."""
+    name = _resolve_instance(instance)
+    if name not in _clients:
+        spec = _instances_config()[name]
+        secret_key = spec.get("password_secret") or _secret_key_for(name)
+        password = _secret(secret_key)
+        if not password:
+            raise NousVizError(
+                f"No password for NousViz instance '{name}'. Provide the "
+                f"'{secret_key}' secret in the Hermes secret scope.")
+        _clients[name] = NousVizClient(
+            base_url=spec["base_url"], email=spec["email"], password=password)
+    return _clients[name]
+
+
+def _set_active(name: str) -> None:
+    instances = _instances_config()
+    if name not in instances:
+        raise NousVizError(
+            f"Unknown NousViz instance '{name}'. Configured: "
+            f"{', '.join(sorted(instances))}.")
+    if _ctx is not None:
+        _ctx.state.set("active_instance", name)
+
+
+def _instances_listing() -> str:
+    try:
+        instances = _instances_config()
+    except NousVizError as e:
+        return f"❌ {e}"
+    if not instances:
+        return ("No NousViz instances configured. Set base_url + email, or an "
+                "instances map, under plugins.entries.nousviz.settings.")
+    active = None
+    try:
+        active = _resolve_instance()
+    except NousVizError:
+        pass
+    rows = []
+    for name in sorted(instances):
+        mark = "→" if name == active else "  "
+        spec = instances[name]
+        rows.append(f"{mark} {name}: {spec['base_url']} ({spec['email']})")
+    return ("NousViz instances:\n" + "\n".join(rows) +
+            "\n(switch with /nousviz use <name>)")
 
 
 def _status_command(raw_args: str) -> str:
-    """/nousviz — connection status; /nousviz mission-control — provision the dashboard."""
-    arg = (raw_args or "").strip().lower()
-    if arg == "mission-control":
+    """/nousviz — status; 'list' — instances; 'use <name>' — switch;
+    'mission-control' — provision the agent-activity dashboard."""
+    arg = (raw_args or "").strip()
+    low = arg.lower()
+
+    if low == "mission-control":
         try:
             from . import mission_control
             result = mission_control.provision(_get_client())
@@ -59,12 +171,37 @@ def _status_command(raw_args: str) -> str:
                     f"Telemetry streams when telemetry_webhook_slug is configured.")
         except NousVizError as e:
             return f"❌ Mission Control provisioning failed: {e}"
+
+    if low in ("list", "instances"):
+        return _instances_listing()
+
+    if low == "use" or low.startswith("use "):
+        parts = arg.split(None, 1)
+        name = parts[1].strip() if len(parts) > 1 else ""
+        if not name:
+            return "Usage: /nousviz use <instance-name>  (see /nousviz list)"
+        try:
+            _set_active(name)
+            info = _get_client().check_connection()
+            return (f"✅ Active NousViz instance is now '{name}' — "
+                    f"{info['base_url']} as {info['email']}.")
+        except NousVizError as e:
+            return f"❌ {e}"
+
     try:
+        instances = _instances_config()
+        active = _resolve_instance()
         info = _get_client().check_connection()
         tool_names = ", ".join(name for name, *_ in nv_tools.TOOLS)
-        return (f"✅ Connected to NousViz at {info['base_url']} as {info['email']}.\n"
-                f"Tools: {tool_names}.\n"
-                f"Commands: /nousviz mission-control — provision the agent-activity dashboard.")
+        lines = [f"✅ Connected to NousViz instance '{active}' at "
+                 f"{info['base_url']} as {info['email']}."]
+        if len(instances) > 1:
+            others = ", ".join(n for n in sorted(instances) if n != active)
+            lines.append(f"Other instances: {others}  (switch with /nousviz use <name>)")
+        lines.append(f"Tools: {tool_names}.")
+        lines.append("Commands: /nousviz list · /nousviz use <name> · "
+                     "/nousviz mission-control.")
+        return "\n".join(lines)
     except NousVizError as e:
         return f"❌ NousViz connection failed: {e}"
 
@@ -80,8 +217,10 @@ def register(ctx) -> None:
                           handler=handler, emoji=emoji)
 
     ctx.register_command(
-        name="nousviz", handler=_status_command, args_hint="[mission-control]",
-        description="NousViz connection status; 'mission-control' provisions the agent-activity dashboard")
+        name="nousviz", handler=_status_command,
+        args_hint="[list | use <name> | mission-control]",
+        description="NousViz connection status; 'list'/'use <name>' switch between "
+                    "instances; 'mission-control' provisions the agent-activity dashboard")
 
     # Telemetry no-ops until telemetry_webhook_slug is configured (read live).
     telemetry = Telemetry(_get_client, ctx.get_config)
