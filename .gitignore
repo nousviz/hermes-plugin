@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+
+# Local private notes — server IPs, customer names, real data. Never commit.
+*.local.md
+*.local.txt
+NOTES.local*
+secrets*
