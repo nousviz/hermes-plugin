@@ -138,6 +138,25 @@ class NousVizClient:
     def dashboard_url(self, slug: str) -> str:
         return f"{self.base_url}/dashboards/{slug}"
 
+    def create_share(self, slug: str, title: Optional[str] = None,
+                     password: Optional[str] = None, expires_hours: int = 168) -> dict:
+        """Create a public share link for a dashboard. Returns {share_id, url, expires_at}.
+
+        The public URL is {base_url}/shared/{share_id} — on a production install the
+        API and UI share one origin, so this opens directly. (On split dev ports the
+        UI origin differs; configure web_base_url to override.)
+        """
+        resp = self._request("POST", "/api/shares", json_body={
+            "page_path": f"/dashboards/{slug}",
+            "resource_type": "dashboard",
+            "title": title,
+            "password": password,
+            "expires_hours": expires_hours,
+        })
+        share_id = resp.get("share_id")
+        resp["url"] = f"{self.base_url}/shared/{share_id}" if share_id else None
+        return resp
+
     # ── alerts ────────────────────────────────────────────────────────
 
     def create_alert(self, fields: dict) -> dict:

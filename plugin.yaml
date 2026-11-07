@@ -8,6 +8,7 @@ provides_tools:
   - nousviz_create_dashboard
   - nousviz_create_alert
   - nousviz_dashboard_link
+  - nousviz_share_dashboard
 provides_hooks:
   - post_tool_call
   - on_session_end

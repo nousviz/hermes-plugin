@@ -162,8 +162,23 @@ CREATE_ALERT_SCHEMA = _schema(
 
 DASHBOARD_LINK_SCHEMA = _schema(
     "nousviz_dashboard_link",
-    "Return the full URL for an existing NousViz dashboard slug, to share with the user.",
+    "Return the full URL for an existing NousViz dashboard slug. Note: dashboards the agent "
+    "creates are owned by the agent's account, so a plain dashboard URL will not open for other "
+    "users — use nousviz_share_dashboard to get a link the user can actually view.",
     {"slug": _str("The dashboard slug. Required.")},
+    required=["slug"],
+)
+
+SHARE_DASHBOARD_SCHEMA = _schema(
+    "nousviz_share_dashboard",
+    "Create a public share link for a dashboard so the user (or their team) can view it without "
+    "signing in. Returns a {base}/shared/{id} URL. Use this whenever the user wants to SEE a "
+    "dashboard the agent built — a plain dashboard URL won't open for them because the agent owns "
+    "it. Optionally password-protect or set an expiry.",
+    {"slug": _str("The dashboard slug to share. Required."),
+     "title": _str("Optional title shown on the shared page."),
+     "password": _str("Optional password to protect the link."),
+     "expires_hours": {"type": "integer", "description": "Link lifetime in hours (default 168 = 7 days)."}},
     required=["slug"],
 )
 
@@ -197,7 +212,25 @@ def handle_create_dashboard(args: dict, **_kw) -> str:
         slug = result.get("slug")
         if slug:
             result["url"] = client.dashboard_url(slug)
+            # Agent-created dashboards are owned by the agent account, so a plain
+            # URL 404s for other users. Attach a share link (best effort) so the
+            # human can actually open it.
+            try:
+                share = client.create_share(slug, title=args.get("name"))
+                result["share_url"] = share.get("url")
+            except NousVizError:
+                pass
         return _ok(result)
+    except (NousVizError, KeyError) as e:
+        return _err(str(e))
+
+
+def handle_share_dashboard(args: dict, **_kw) -> str:
+    try:
+        return _ok(_client().create_share(
+            slug=args["slug"], title=args.get("title"),
+            password=args.get("password"),
+            expires_hours=int(args.get("expires_hours") or 168)))
     except (NousVizError, KeyError) as e:
         return _err(str(e))
 
@@ -223,4 +256,5 @@ TOOLS = (
     ("nousviz_create_dashboard", CREATE_DASHBOARD_SCHEMA, handle_create_dashboard, "📊"),
     ("nousviz_create_alert",     CREATE_ALERT_SCHEMA,     handle_create_alert,     "🔔"),
     ("nousviz_dashboard_link",   DASHBOARD_LINK_SCHEMA,   handle_dashboard_link,   "🔗"),
+    ("nousviz_share_dashboard",  SHARE_DASHBOARD_SCHEMA,  handle_share_dashboard,  "🌐"),
 )
