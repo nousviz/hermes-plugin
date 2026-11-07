@@ -61,9 +61,9 @@ def _status_command(raw_args: str) -> str:
             return f"❌ Mission Control provisioning failed: {e}"
     try:
         info = _get_client().check_connection()
+        tool_names = ", ".join(name for name, *_ in nv_tools.TOOLS)
         return (f"✅ Connected to NousViz at {info['base_url']} as {info['email']}.\n"
-                f"Tools: nousviz_query, nousviz_push, nousviz_create_dashboard, "
-                f"nousviz_create_alert, nousviz_dashboard_link.\n"
+                f"Tools: {tool_names}.\n"
                 f"Commands: /nousviz mission-control — provision the agent-activity dashboard.")
     except NousVizError as e:
         return f"❌ NousViz connection failed: {e}"
