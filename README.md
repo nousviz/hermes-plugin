@@ -1,9 +1,12 @@
-# nousviz — a data platform for your Hermes agent
+# NousViz — Agentic Analytics for your Hermes agent
 
-Connect [Hermes Agent](https://github.com/NousResearch/hermes-agent) to a self-hosted
-[NousViz](https://github.com/nousviz/nousviz-app) install (v1.0.6+) and your agent gets
-what agents are missing: somewhere real to put data, dashboards that outlive the
-conversation, and alerts that call the agent back.
+Turn [Hermes Agent](https://github.com/NousResearch/hermes-agent) into a self-hosted,
+model-agnostic **data analyst**. Connect it to one or more
+[NousViz](https://github.com/nousviz/nousviz-app) installs (v1.0.6+) and your Hermes
+agent can discover what data you have, answer questions in natural language (read-only
+SQL across Postgres / ClickHouse / MySQL), and turn answers into dashboards and alerts
+that outlive the conversation — agentic analytics on data you own, with no third party
+holding your data or your model.
 
 **NousViz is the system of record. Hermes is data in motion.** The agent explores
 conversationally; when a view proves useful it becomes a permanent dashboard.
@@ -17,6 +20,7 @@ conversationally; when a view proves useful it becomes a permanent dashboard.
 | `nousviz_push` | Land collected data via an inbound webhook endpoint |
 | `nousviz_create_dashboard` | Turn an exploration into a persistent dashboard, returns the URL |
 | `nousviz_create_alert` | Threshold / drop / rise / zero-check alerts on any numeric metric |
+| `nousviz_create_annotation` | Record durable notes/insights onto the data timeline (the agent's write-back memory) |
 | `nousviz_dashboard_link` | Return the URL of an existing dashboard |
 | `nousviz_share_dashboard` | Create a public share link a human can open without signing in |
 

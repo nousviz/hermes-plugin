@@ -15,6 +15,8 @@ Every endpoint used here was verified against nousviz-app v1.0.6 source:
                                   (routes/dashboards.py, needs dashboards.write)
 - PUT  /api/dashboards/{slug}     same body, full replace
 - POST /api/alerts                AlertCreate fields (routes/alerts.py, needs alerts.write)
+- POST /api/annotations           AnnotationCreate (routes/annotations.py, needs
+                                  annotations.write; required title + date_start)
 - POST /api/webhooks/in/{slug}    raw JSON body; optional HMAC-SHA256 of the body
                                   in the x-webhook-signature header
                                   (plugins/utilities/webhooks/api/routes.py)
@@ -194,3 +196,16 @@ class NousVizClient:
     def create_alert(self, fields: dict) -> dict:
         """Pass-through to POST /api/alerts; the server validates AlertCreate fields."""
         return self._request("POST", "/api/alerts", json_body=fields)
+
+    # ── annotations ───────────────────────────────────────────────────
+
+    def create_annotation(self, fields: dict) -> dict:
+        """Pass-through to POST /api/annotations (needs annotations.write).
+
+        Verified AnnotationCreate (routes/annotations.py): required ``title`` and
+        ``date_start``; optional ``description, category, severity, color,
+        plugin_id, dataset, date_end, scope_filters, tags, pinned`` and the
+        semantic fields ``semantic_meaning, impact_scope, semantic_score
+        (useful|neutral|useless), semantic_note``.
+        """
+        return self._request("POST", "/api/annotations", json_body=fields)

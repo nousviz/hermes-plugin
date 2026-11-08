@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 — annotations (the agent's write-back memory)
+
+- New `nousviz_create_annotation` tool: the agent can record durable notes and
+  insights onto NousViz's timeline (`POST /api/annotations`, `annotations.write`
+  — the analyst role has it). Pins a note to a date, optionally scoped to a
+  plugin/dataset, with the semantic fields (`semantic_meaning`,
+  `semantic_score`, `semantic_note`, `impact_scope`) that make it an analytical
+  record, not just a sticky note.
+- This closes the learning loop: the agent discovers data (`nousviz_catalog`),
+  analyzes it, and writes back what it learned — which it (and the user, in
+  NousViz) read next time. Lasting understanding instead of re-derivation.
+- The `nousviz:analyst` skill now coaches a "Remember" step: save durable
+  findings as annotations.
+- Required fields `title` + `date_start` are checked in the handler; everything
+  else passes through to the server's `AnnotationCreate` validation.
+
 ## 0.4.0 — NousViz Analyst skill
 
 - Bundles a `nousviz:analyst` skill (registered at load via

@@ -55,6 +55,15 @@ them. `nousviz_share_dashboard` makes one on demand.
 `nousviz_create_alert` on the numeric metric instead of leaving it to manual
 checking.
 
+**5. Remember.** When you learn something durable about the data — a promo that
+explains a spike, a sync that began failing on a date, a definition the user
+gave you, an insight worth keeping — record it with `nousviz_create_annotation`
+(anchor it to the relevant `date_start`, scope it to the `plugin_id`/`dataset`,
+and put the lasting takeaway in `semantic_meaning`). You and the user read these
+back later, so this is how you build understanding over time instead of
+re-deriving it every session. Don't annotate trivia; annotate what changes how
+the data should be read.
+
 ## Multiple instances
 
 If the user has several NousViz servers, `/nousviz list` shows them and which is

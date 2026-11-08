@@ -191,6 +191,42 @@ CREATE_ALERT_SCHEMA = _schema(
     required=["name", "label", "plugin_id", "dataset", "metric", "condition_type"],
 )
 
+CREATE_ANNOTATION_SCHEMA = _schema(
+    "nousviz_create_annotation",
+    "Write an annotation onto NousViz's timeline — a durable note pinned to a date, optionally "
+    "scoped to a plugin/dataset. Use this to RECORD what you learn so it survives the "
+    "conversation: a known promo that explains a spike, a sync that started failing on a date, a "
+    "definition the user gave you, or an insight worth keeping. Annotations are read back later "
+    "(by you and by the user in NousViz), so this is how the agent builds lasting understanding "
+    "of the data rather than re-deriving it every session. Needs the annotations.write permission "
+    "(the analyst role has it).",
+    {"title": _str("Short title for the annotation. Required."),
+     "date_start": _str("ISO date (YYYY-MM-DD) or datetime the annotation anchors to on the "
+                        "timeline. Required."),
+     "date_end": _str("Optional end date/datetime for a range (ISO)."),
+     "description": _str("Fuller note body — what happened and why it matters."),
+     "plugin_id": _str("Optional plugin slug this annotation is about (from nousviz_catalog)."),
+     "dataset": _str("Optional dataset/table the annotation is about."),
+     "category": _str("Kind of note, e.g. note (default), event, promo, incident, definition."),
+     "severity": _str("info (default), warning, critical, good, or tip."),
+     "color": _str("Optional display color (hex or token)."),
+     "tags": {"type": "array", "items": {"type": "string"},
+              "description": "Optional labels for filtering."},
+     "pinned": {"type": "boolean", "description": "Pin to the top of the timeline."},
+     "semantic_meaning": _str("What this annotation means for interpreting the data — the "
+                              "durable insight the next session should know."),
+     "semantic_score": {"type": "string", "enum": ["useful", "neutral", "useless"],
+                        "description": "How useful this signal is for analysis."},
+     "semantic_note": _str("Extra semantic context."),
+     "impact_scope": {"type": "array", "items": {"type": "string"},
+                      "description": "Which metrics/areas this affects."},
+     "scope_filters": {"type": "object", "additionalProperties": True,
+                       "description": "Optional structured filters narrowing what the annotation "
+                                      "applies to."},
+     **_INSTANCE_PROP},
+    required=["title", "date_start"],
+)
+
 DASHBOARD_LINK_SCHEMA = _schema(
     "nousviz_dashboard_link",
     "Return the full URL for an existing NousViz dashboard slug. Note: dashboards the agent "
@@ -331,6 +367,18 @@ def handle_create_alert(args: dict, **_kw) -> str:
         return _err(str(e))
 
 
+def handle_create_annotation(args: dict, **_kw) -> str:
+    try:
+        if not args.get("title") or not args.get("date_start"):
+            return _err("nousviz_create_annotation requires 'title' and 'date_start'.")
+        # Pass through what the agent set; the server validates the rest.
+        # 'instance' selects the target server and is not part of the body.
+        fields = {k: v for k, v in args.items() if v is not None and k != "instance"}
+        return _ok(_client(args.get("instance")).create_annotation(fields))
+    except NousVizError as e:
+        return _err(str(e))
+
+
 def handle_dashboard_link(args: dict, **_kw) -> str:
     try:
         return _ok({"url": _client(args.get("instance")).dashboard_url(args["slug"])})
@@ -344,6 +392,7 @@ TOOLS = (
     ("nousviz_push",             PUSH_SCHEMA,             handle_push,             "📥"),
     ("nousviz_create_dashboard", CREATE_DASHBOARD_SCHEMA, handle_create_dashboard, "📊"),
     ("nousviz_create_alert",     CREATE_ALERT_SCHEMA,     handle_create_alert,     "🔔"),
+    ("nousviz_create_annotation", CREATE_ANNOTATION_SCHEMA, handle_create_annotation, "📝"),
     ("nousviz_dashboard_link",   DASHBOARD_LINK_SCHEMA,   handle_dashboard_link,   "🔗"),
     ("nousviz_share_dashboard",  SHARE_DASHBOARD_SCHEMA,  handle_share_dashboard,  "🌐"),
 )
