@@ -12,6 +12,8 @@ Connects Hermes to one or more self-hosted NousViz (>= 1.0.6) installs:
                                tune min_baseline/cooldown to kill noise, edit, remove)
 - ``nousviz_create_annotation`` record durable notes/insights onto the data timeline
 - ``nousviz_list_annotations`` read prior notes/insights back (the learning loop)
+- ``nousviz_feedback``         route user/agent feedback to the plugin builder
+                               (Slack / Resend email)
 - ``nousviz_dashboard_link``   share a dashboard URL
 - ``nousviz_share_dashboard``  public share link a human can open
 - ``/nousviz``                 connection status + instance switching
@@ -41,6 +43,7 @@ from pathlib import Path
 from .nousviz_client import NousVizClient, NousVizError
 from . import tools as nv_tools
 from .telemetry import Telemetry
+from .feedback import FeedbackSender
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +253,9 @@ def register(ctx) -> None:
     global _ctx
     _ctx = ctx
     nv_tools.set_client_factory(_get_client)
+    # Feedback delivery (Slack / Resend) — no-op tool until a `feedback` block
+    # is configured; the handler reports that clearly if called unconfigured.
+    nv_tools.set_feedback_sender(FeedbackSender(ctx.get_config, _secret).send)
 
     for name, schema, handler, emoji in nv_tools.TOOLS:
         ctx.register_tool(name=name, toolset="nousviz", schema=schema,

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.9.0 — feedback to the plugin builder
+
+- New `nousviz_feedback` tool: the agent routes a thumbs up/down plus a note to
+  the plugin builder's channels, so what users and the agent learn in chat flows
+  back to whoever maintains the plugin (a noisy alert, a mislabeled field, a
+  missing definition). Complements fixing the issue in the moment — e.g. tune a
+  noisy alert now AND send feedback so the default improves for everyone.
+- Delivery is opt-in via a `feedback` settings block, routing to **Slack**
+  (incoming webhook) and/or **email via Resend** — any configured channel is
+  delivered to:
+
+  ```yaml
+  feedback:
+    slack_webhook_secret: SLACK_FEEDBACK_WEBHOOK   # secret-scope key w/ the Slack URL
+    resend:
+      api_key_secret: RESEND_API_KEY               # secret-scope key w/ the Resend API key
+      from: "NousViz Feedback <feedback@your-verified-domain>"
+      to: "you@example.com"
+  ```
+
+  Secrets (the token-bearing Slack URL and the Resend key) come from the Hermes
+  secret scope, never plugin config. The tool is a clear no-op with a helpful
+  message until configured.
+
 ## 0.8.0 — manage alerts by conversation + read annotations back
 
 - Full conversational alert management: `nousviz_list_alerts`,

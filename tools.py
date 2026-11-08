@@ -19,10 +19,18 @@ logger = logging.getLogger(__name__)
 # The factory accepts an optional instance name (multi-instance support).
 _get_client: Optional[Callable[..., NousVizClient]] = None
 
+# Set by register() when feedback delivery is wired (Slack / Resend).
+_feedback_send: Optional[Callable[[dict], dict]] = None
+
 
 def set_client_factory(factory: Callable[..., NousVizClient]) -> None:
     global _get_client
     _get_client = factory
+
+
+def set_feedback_sender(fn: Optional[Callable[[dict], dict]]) -> None:
+    global _feedback_send
+    _feedback_send = fn
 
 
 def _ok(data: Any) -> str:
@@ -322,6 +330,28 @@ LIST_ANNOTATIONS_SCHEMA = _schema(
      **_INSTANCE_PROP},
 )
 
+FEEDBACK_SCHEMA = _schema(
+    "nousviz_feedback",
+    "Send feedback to the plugin builder — a thumbs up/down plus a note — so what users and you "
+    "learn in chat flows back to whoever maintains the plugin. Use it when the user rates an "
+    "answer, when an alert or insight was noisy or wrong, or when you spot a data/semantic gap "
+    "worth fixing at the source (a mislabeled field, a missing definition). Delivered to the "
+    "builder's configured channels (Slack and/or email via Resend). This complements fixing the "
+    "immediate issue — e.g. still tune a noisy alert now, AND send feedback so the default "
+    "improves for everyone.",
+    {"rating": {"type": "string", "enum": ["up", "down"],
+                "description": "Thumbs up or down."},
+     "subject": {"type": "string",
+                 "enum": ["alert", "insight", "semantic", "data", "answer", "general"],
+                 "description": "What the feedback is about."},
+     "note": _str("What was good or wrong, in the user's words where possible. Required."),
+     "plugin_id": _str("The plugin this is about (from nousviz_catalog), if specific."),
+     "suggested_fix": _str("A concrete improvement, if you or the user has one "
+                           "(e.g. 'add a column glossary for rs_com', 'raise default min_baseline')."),
+     "context": _str("Optional extra context (the dataset, the alert id, the question asked).")},
+    required=["note"],
+)
+
 DASHBOARD_LINK_SCHEMA = _schema(
     "nousviz_dashboard_link",
     "Return the full URL for an existing NousViz dashboard slug. Note: dashboards the agent "
@@ -608,6 +638,21 @@ def handle_list_annotations(args: dict, **_kw) -> str:
         return _err(str(e))
 
 
+def handle_feedback(args: dict, **_kw) -> str:
+    try:
+        if _feedback_send is None:
+            return _err("Feedback isn't configured. Ask the operator to add a `feedback` block "
+                        "(slack_webhook_secret and/or resend) to the nousviz plugin settings.")
+        if not args.get("note"):
+            return _err("nousviz_feedback requires a 'note'.")
+        payload = {k: v for k, v in args.items() if v is not None}
+        return _ok(_feedback_send(payload))
+    except NousVizError as e:
+        return _err(str(e))
+    except Exception as e:  # feedback delivery errors (FeedbackError, network)
+        return _err(str(e))
+
+
 def handle_dashboard_link(args: dict, **_kw) -> str:
     try:
         return _ok({"url": _client(args.get("instance")).dashboard_url(args["slug"])})
@@ -628,6 +673,7 @@ TOOLS = (
     ("nousviz_delete_alert",     DELETE_ALERT_SCHEMA,     handle_delete_alert,     "🗑️"),
     ("nousviz_create_annotation", CREATE_ANNOTATION_SCHEMA, handle_create_annotation, "📝"),
     ("nousviz_list_annotations", LIST_ANNOTATIONS_SCHEMA, handle_list_annotations, "📖"),
+    ("nousviz_feedback",         FEEDBACK_SCHEMA,         handle_feedback,         "📣"),
     ("nousviz_dashboard_link",   DASHBOARD_LINK_SCHEMA,   handle_dashboard_link,   "🔗"),
     ("nousviz_share_dashboard",  SHARE_DASHBOARD_SCHEMA,  handle_share_dashboard,  "🌐"),
 )
