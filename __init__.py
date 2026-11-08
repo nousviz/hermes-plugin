@@ -10,6 +10,7 @@ Connects Hermes to one or more self-hosted NousViz (>= 1.0.6) installs:
 - ``nousviz_dashboard_link``   share a dashboard URL
 - ``nousviz_share_dashboard``  public share link a human can open
 - ``/nousviz``                 connection status + instance switching
+- ``nousviz:analyst`` skill    coaches catalog-first data analysis
 - optional telemetry hooks     stream the agent's own tool activity into a
                                NousViz "Mission Control" dashboard
 
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 
 from .nousviz_client import NousVizClient, NousVizError
 from . import tools as nv_tools
@@ -39,6 +41,37 @@ logger = logging.getLogger(__name__)
 
 _clients: dict[str, NousVizClient] = {}
 _ctx = None
+
+# Bundled "NousViz Analyst" skill. Registered as `nousviz:analyst` (namespace =
+# manifest name). Its frontmatter `description` is the trigger the model sees in
+# <available_skills>, so we parse it from the file rather than duplicate it here.
+_SKILL_MD = Path(__file__).resolve().parent / "skills" / "analyst" / "SKILL.md"
+_ANALYST_FALLBACK_DESC = (
+    "Work with the user's data in NousViz: discover tables with nousviz_catalog, "
+    "answer questions with read-only SQL, and build dashboards and alerts. Use for "
+    "any 'what data do you have' or data-analysis request.")
+
+
+def _parse_frontmatter(path: Path) -> dict:
+    """Minimal YAML-frontmatter reader: top-level single-line ``key: value``
+    pairs between the opening and closing ``---``. Enough for name/description/
+    version; nested blocks (e.g. metadata) are ignored."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    if not text.startswith("---"):
+        return {}
+    end = text.find("\n---", 3)
+    if end == -1:
+        return {}
+    fm: dict[str, str] = {}
+    for line in text[3:end].splitlines():
+        if not line or line[0] in " \t#" or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        fm[key.strip()] = value.strip().strip('"').strip("'")
+    return fm
 
 
 def _secret(name: str) -> str | None:
@@ -222,6 +255,18 @@ def register(ctx) -> None:
         args_hint="[list | use <name> | mission-control]",
         description="NousViz connection status; 'list'/'use <name>' switch between "
                     "instances; 'mission-control' provisions the agent-activity dashboard")
+
+    # Bundled "NousViz Analyst" skill -> nousviz:analyst. Coaches catalog-first
+    # data work so plain-language data questions don't fall through to generic
+    # handling. Best-effort: a missing/garbled file must not break the plugin.
+    try:
+        fm = _parse_frontmatter(_SKILL_MD)
+        ctx.register_skill(
+            name="analyst", path=_SKILL_MD,
+            description=fm.get("description") or _ANALYST_FALLBACK_DESC,
+            frontmatter=fm)
+    except Exception as exc:  # pragma: no cover - defensive, mirrors loader
+        logger.warning("nousviz: analyst skill not registered: %s", exc)
 
     # Telemetry no-ops until telemetry_webhook_slug is configured (read live).
     telemetry = Telemetry(_get_client, ctx.get_config)

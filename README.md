@@ -28,6 +28,13 @@ switch between configured servers), and optional **Mission Control telemetry**:
 `post_tool_call` hooks stream the agent's own activity (tool name, status, duration —
 never arguments or results) into a NousViz dashboard.
 
+The plugin also bundles a **`nousviz:analyst` skill** that coaches the agent to
+work as a data analyst — discover data with `nousviz_catalog` before writing SQL,
+answer with read-only queries, then persist useful views as dashboards and
+alerts. It triggers on plain-language data questions ("what data do you have?",
+"trend of…", "build me a dashboard of…") so the agent looks at the real data
+instead of answering generically.
+
 ## Widget cookbook
 
 `nousviz_create_dashboard` takes real NousViz widget JSON (shapes verified against the

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — NousViz Analyst skill
+
+- Bundles a `nousviz:analyst` skill (registered at load via
+  `ctx.register_skill`, namespace = plugin name). It coaches the agent to work
+  as a data analyst: **discover with `nousviz_catalog` before writing SQL**,
+  answer with read-only queries, then persist useful views as dashboards and
+  alerts — and to never answer "what data do you have?" generically.
+- Fixes the common failure where a plain-language data question ("what data do
+  you have access to?") fell through to generic capability handling and never
+  touched NousViz.
+- The skill's trigger is parsed from its SKILL.md frontmatter, so the text the
+  model sees can't drift from the file. Registration is best-effort — a
+  missing skill file logs a warning and never breaks the plugin.
+
 ## 0.3.0 — data catalog
 
 - New `nousviz_catalog` tool: the agent can discover what data exists
