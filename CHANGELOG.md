@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 — ClickHouse/MySQL datasets become visible
+
+- `nousviz_catalog` now surfaces manifest `datasets:` entries the catalog
+  **can't introspect** — ClickHouse- and MySQL-backed tables — under a new
+  `documented_datasets` list, with their `label`, `description`,
+  `semantic_type` and `db` engine. The Postgres-only catalog never listed these
+  tables, so for stats plugins whose figures live in ClickHouse the agent was
+  blind to them; now it learns they exist and what they mean (columns aren't
+  introspected — it queries them with `nousviz_query` + the right `db_engine`).
+- Reads the raw manifest via `GET /api/plugins/{id}` (not the Postgres-only
+  `_enrich_datasets` path), so a `datasets:` entry for a ClickHouse table is no
+  longer dropped. Put a short column glossary in each dataset `description` to
+  give the agent column-level meaning the catalog can't provide for ClickHouse.
+
 ## 0.6.0 — the agent reads the operator's meaning
 
 - `nousviz_catalog` now layers the operator's **manifest semantics** onto the

@@ -42,6 +42,11 @@ to see what actually exists. Never invent table or column names.
   semantics** — each table's `label`, `description`, `semantic_type`, and the
   plugin's description. Prefer these definitions over inferring meaning from
   column names; they're the ground truth for what the data means.
+- Watch for **`documented_datasets`** in the result: these are ClickHouse- or
+  MySQL-backed tables the Postgres-only catalog can't introspect, so you only
+  get their name, meaning and `db` engine (not columns). They're often where the
+  real figures live — query them with `nousviz_query` using that `db_engine`,
+  and lean on their `description` for column meaning.
 - Then call **`nousviz_insights`** to read what the operator considers
   *important* — their curated metrics and known findings (defined KPIs, issues,
   what a number signals). Check it when answering an analytical question or

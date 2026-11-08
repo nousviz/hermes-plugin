@@ -89,7 +89,11 @@ CATALOG_SCHEMA = _schema(
     "metadata — it never returns row data. When you drill into a plugin (pass plugin_id), the "
     "result also carries the operator's own semantics where they defined them — each table's "
     "label, description and semantic_type, plus the plugin's description — so prefer those "
-    "meanings over guessing from column names. For curated metrics and findings, also see "
+    "meanings over guessing from column names. Datasets the catalog can't introspect (e.g. "
+    "ClickHouse- or MySQL-backed, which the Postgres-only catalog doesn't list) still appear "
+    "under `documented_datasets` with their labels/descriptions and `db` engine, so you learn "
+    "they exist and what they mean even though their columns aren't listed — query them with "
+    "nousviz_query using that db_engine. For curated metrics and findings, also see "
     "nousviz_insights.",
     {"plugin_id": _str("Optional plugin slug to drill into (from the index). Omit for the "
                        "top-level index of all accessible plugins."),
@@ -304,37 +308,70 @@ def _terse_index(raw: dict) -> dict:
 _SEMANTIC_KEYS = ("label", "description", "grain", "semantic_type")
 
 
-def _dataset_semantics(detail: Optional[dict]) -> dict:
-    """Map dataset name -> {label, description, grain, semantic_type} from a
-    GET /api/plugins/{id} response. Empty when detail is missing."""
+def _manifest_datasets(detail: Optional[dict]) -> dict:
+    """Map dataset name -> full manifest dataset dict from a GET /api/plugins/{id}
+    response. This is the RAW manifest `datasets:` block (un-enriched), so it
+    includes ClickHouse/MySQL datasets the Postgres-only catalog can't see."""
     out: dict[str, dict] = {}
-    if not detail:
-        return out
-    for ds in (detail.get("datasets") or []):
+    for ds in (detail or {}).get("datasets") or []:
         if isinstance(ds, dict) and ds.get("name"):
-            sem = {k: ds[k] for k in _SEMANTIC_KEYS if ds.get(k)}
-            if sem:
-                out[ds["name"]] = sem
+            out[ds["name"]] = ds
     return out
 
 
+def _sem_fields(ds: dict) -> dict:
+    """Pick just the semantic annotations from a manifest dataset dict."""
+    return {k: ds[k] for k in _SEMANTIC_KEYS if ds.get(k)}
+
+
+# Back-compat helper: dataset name -> semantic fields.
+def _dataset_semantics(detail: Optional[dict]) -> dict:
+    return {name: s for name, ds in _manifest_datasets(detail).items()
+            if (s := _sem_fields(ds))}
+
+
 def _terse_plugin(raw: dict, detail: Optional[dict] = None) -> dict:
-    """One plugin's tables as name + {column: type} maps, with the operator's
-    manifest semantics (label/description/grain/semantic_type) layered on each
-    table and the plugin's own description/long_description surfaced."""
-    sem_by_table = _dataset_semantics(detail)
+    """One plugin's catalog tables as name + {column: type} maps, with the
+    operator's manifest semantics layered on, the plugin's own description
+    surfaced, AND any manifest datasets the catalog can't introspect (e.g.
+    ClickHouse/MySQL-backed) surfaced as `documented_datasets` so the agent
+    still learns they exist and what they mean."""
+    ds_by_name = _manifest_datasets(detail)
     tables = []
+    catalog_names: set[str] = set()
     for t in raw.get("tables", []):
         name = t.get("name")
+        catalog_names.add(name)
         entry: dict[str, Any] = {
             "table": name,
             "rows": t.get("row_count_estimate"),
             "columns": {c.get("name"): c.get("data_type")
                         for c in (t.get("columns") or [])},
         }
-        entry.update(sem_by_table.get(name, {}))  # label/description/grain/semantic_type
+        entry.update(_sem_fields(ds_by_name.get(name, {})))  # label/description/grain/semantic_type
         tables.append(entry)
+
+    # Manifest datasets with no Postgres catalog table — typically ClickHouse/
+    # MySQL. Columns aren't introspectable here; surface name + meaning + engine
+    # so the agent knows to query them (nousviz_query with the right db_engine).
+    documented = []
+    for name, ds in ds_by_name.items():
+        if name in catalog_names:
+            continue
+        d: dict[str, Any] = {
+            "table": name,
+            "introspected": False,
+            "note": "Not a Postgres catalog table (columns not introspected). "
+                    "Query it with nousviz_query using the right db_engine.",
+        }
+        if ds.get("db"):
+            d["db"] = ds["db"]
+        d.update(_sem_fields(ds))
+        documented.append(d)
+
     out: dict[str, Any] = {"plugin_id": raw.get("plugin_id"), "tables": tables}
+    if documented:
+        out["documented_datasets"] = documented
     if detail:
         if detail.get("description"):
             out["plugin_description"] = detail["description"]
