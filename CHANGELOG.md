@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.0 — manage alerts by conversation + read annotations back
+
+- Full conversational alert management: `nousviz_list_alerts`,
+  `nousviz_test_alert` (dry-run — "Would fire on N of M rows", no notification),
+  `nousviz_update_alert`, `nousviz_delete_alert`. A user can now describe an
+  alert, have the agent build it (`nousviz_create_alert`), **test** it, **tune**
+  it and **edit/remove** it entirely from chat.
+- Anti-noise tuning is first-class: `nousviz_update_alert` surfaces
+  `min_baseline` (a drop/rise alert fires only when the baseline average exceeds
+  it — stops sparse data like a program with one FTD last week from triggering)
+  and `cooldown_hours`. Verified against the evaluator (`run_alerts.py`).
+- `nousviz_list_annotations` closes the learning loop: the agent can now READ
+  back the notes/insights it recorded with `nousviz_create_annotation`
+  (`GET /api/annotations`, `annotations.read`), so corrections persist across
+  sessions instead of evaporating when the chat ends. Rich filters (plugin,
+  dataset, date, category, semantic_score, pinned).
+- Alerts remain Postgres-only + single-metric by the engine's design; the agent
+  tools don't change that, they make what the engine supports fully editable
+  by conversation.
+
 ## 0.7.0 — ClickHouse/MySQL datasets become visible
 
 - `nousviz_catalog` now surfaces manifest `datasets:` entries the catalog

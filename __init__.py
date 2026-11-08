@@ -8,7 +8,10 @@ Connects Hermes to one or more self-hosted NousViz (>= 1.0.6) installs:
 - ``nousviz_push``             land collected data via inbound webhooks
 - ``nousviz_create_dashboard`` turn an exploration into a persistent dashboard
 - ``nousviz_create_alert``     get notified (and called back) when numbers move
+- ``nousviz_list/test/update/delete_alert`` manage alerts by conversation (dry-run,
+                               tune min_baseline/cooldown to kill noise, edit, remove)
 - ``nousviz_create_annotation`` record durable notes/insights onto the data timeline
+- ``nousviz_list_annotations`` read prior notes/insights back (the learning loop)
 - ``nousviz_dashboard_link``   share a dashboard URL
 - ``nousviz_share_dashboard``  public share link a human can open
 - ``/nousviz``                 connection status + instance switching

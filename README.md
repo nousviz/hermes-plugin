@@ -21,7 +21,9 @@ conversationally; when a view proves useful it becomes a permanent dashboard.
 | `nousviz_push` | Land collected data via an inbound webhook endpoint |
 | `nousviz_create_dashboard` | Turn an exploration into a persistent dashboard, returns the URL |
 | `nousviz_create_alert` | Threshold / drop / rise / zero-check alerts on any numeric metric |
+| `nousviz_list_alerts` / `nousviz_test_alert` / `nousviz_update_alert` / `nousviz_delete_alert` | Manage alerts by conversation — dry-run ("would fire on N"), tune `min_baseline`/`cooldown` to kill noise, edit, remove |
 | `nousviz_create_annotation` | Record durable notes/insights onto the data timeline (the agent's write-back memory) |
+| `nousviz_list_annotations` | Read prior notes/insights back — the learning loop, so corrections persist across sessions |
 | `nousviz_dashboard_link` | Return the URL of an existing dashboard |
 | `nousviz_share_dashboard` | Create a public share link a human can open without signing in |
 

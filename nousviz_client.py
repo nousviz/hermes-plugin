@@ -20,8 +20,13 @@ Every endpoint used here was verified against nousviz-app v1.0.6 source:
                                   (routes/dashboards.py, needs dashboards.write)
 - PUT  /api/dashboards/{slug}     same body, full replace
 - POST /api/alerts                AlertCreate fields (routes/alerts.py, needs alerts.write)
+- GET  /api/alerts                list alerts (alerts.read; plugin_id/enabled_only filter)
+- PUT  /api/alerts/{id}           AlertUpdate (alerts.write) — edit threshold/min_baseline/...
+- DELETE /api/alerts/{id}         delete an alert (alerts.write)
+- POST /api/alerts/{id}/test      dry-run: "Would fire on N of M rows" (alerts.write)
 - POST /api/annotations           AnnotationCreate (routes/annotations.py, needs
                                   annotations.write; required title + date_start)
+- GET  /api/annotations           list annotations (annotations.read; rich filters)
 - POST /api/webhooks/in/{slug}    raw JSON body; optional HMAC-SHA256 of the body
                                   in the x-webhook-signature header
                                   (plugins/utilities/webhooks/api/routes.py)
@@ -34,9 +39,16 @@ import hmac
 import json
 import logging
 import threading
+import urllib.parse
 from typing import Any, Optional
 
 import requests
+
+
+def _qs(params: dict) -> str:
+    """Build a ``?a=b&c=d`` query string from non-None params (url-encoded)."""
+    items = {k: v for k, v in params.items() if v is not None}
+    return ("?" + urllib.parse.urlencode(items)) if items else ""
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +233,33 @@ class NousVizClient:
     def create_alert(self, fields: dict) -> dict:
         """Pass-through to POST /api/alerts; the server validates AlertCreate fields."""
         return self._request("POST", "/api/alerts", json_body=fields)
+
+    def list_alerts(self, plugin_id: Optional[str] = None,
+                    enabled_only: bool = False) -> dict:
+        """GET /api/alerts (alerts.read). Optional plugin_id / enabled_only filter."""
+        return self._request("GET", "/api/alerts" + _qs(
+            {"plugin_id": plugin_id, "enabled_only": "true" if enabled_only else None}))
+
+    def update_alert(self, alert_id: str, fields: dict) -> dict:
+        """PUT /api/alerts/{id} (alerts.write); server validates AlertUpdate fields."""
+        return self._request("PUT", f"/api/alerts/{alert_id}", json_body=fields)
+
+    def delete_alert(self, alert_id: str) -> dict:
+        """DELETE /api/alerts/{id} (alerts.write)."""
+        return self._request("DELETE", f"/api/alerts/{alert_id}")
+
+    def test_alert(self, alert_id: str) -> dict:
+        """POST /api/alerts/{id}/test (alerts.write) — dry-run; no notify/record.
+        Returns a message like 'Would fire on N of M rows'."""
+        return self._request("POST", f"/api/alerts/{alert_id}/test", json_body={})
+
+    # ── annotations ───────────────────────────────────────────────────
+
+    def list_annotations(self, **filters: Any) -> dict:
+        """GET /api/annotations (annotations.read). Filters: plugin_id, dataset,
+        category, date_from, date_to, semantic_score, pinned, include_archived,
+        limit (<=1000)."""
+        return self._request("GET", "/api/annotations" + _qs(filters))
 
     # ── annotations ───────────────────────────────────────────────────
 

@@ -248,6 +248,80 @@ CREATE_ANNOTATION_SCHEMA = _schema(
     required=["title", "date_start"],
 )
 
+LIST_ALERTS_SCHEMA = _schema(
+    "nousviz_list_alerts",
+    "List the alert rules configured in NousViz, so you can show the user what's watching their "
+    "data and reference an alert by id to test, edit or delete it. Optional filters by plugin or "
+    "enabled-only.",
+    {"plugin_id": _str("Only alerts on this plugin's data."),
+     "enabled_only": {"type": "boolean", "description": "Only enabled alerts."},
+     **_INSTANCE_PROP},
+)
+
+TEST_ALERT_SCHEMA = _schema(
+    "nousviz_test_alert",
+    "Dry-run an existing alert and report whether it WOULD fire right now (e.g. 'Would fire on 3 "
+    "of 40 rows') — no notification is sent and nothing is recorded. Use this right after "
+    "creating or editing an alert so the user can see its behaviour before trusting it, and to "
+    "tune out noise: if it would fire on meaningless low-volume rows, raise min_baseline or the "
+    "threshold with nousviz_update_alert and test again.",
+    {"alert_id": _str("The alert id to test (from nousviz_list_alerts). Required."),
+     **_INSTANCE_PROP},
+    required=["alert_id"],
+)
+
+UPDATE_ALERT_SCHEMA = _schema(
+    "nousviz_update_alert",
+    "Edit an existing alert conversationally — change its threshold, sensitivity or on/off state, "
+    "then re-test. KEY anti-noise knobs: `min_baseline` makes a drop/rise alert fire only when the "
+    "baseline average exceeds it (set this so sparse data — e.g. a program with one FTD last week "
+    "— doesn't trigger meaningless alerts); `cooldown_hours` suppresses repeat-firing. Only the "
+    "fields you pass are changed.",
+    {"alert_id": _str("The alert id to update (from nousviz_list_alerts). Required."),
+     "threshold": {"type": "number", "description": "Condition threshold (e.g. -20 for a 20% drop)."},
+     "min_baseline": {"type": "number", "description": "Minimum baseline average required before "
+                      "a drop/rise alert can fire — the main noise filter for low-volume data."},
+     "cooldown_hours": {"type": "integer", "description": "Hours to suppress repeats after firing."},
+     "enabled": {"type": "boolean", "description": "Turn the alert on/off."},
+     "condition_type": _str("threshold_drop | threshold_rise | absolute_above | absolute_below | zero."),
+     "aggregation": _str("sum | avg | etc. applied to the metric."),
+     "metric": _str("Numeric column/metric to evaluate."),
+     "check_frequency": _str("How often to evaluate (e.g. daily)."),
+     "check_period": _str("Window to evaluate (e.g. yesterday)."),
+     "label": _str("Human-readable label."),
+     "description": _str("What this alert watches and why."),
+     **_INSTANCE_PROP},
+    required=["alert_id"],
+)
+
+DELETE_ALERT_SCHEMA = _schema(
+    "nousviz_delete_alert",
+    "Delete an alert rule. Use when the user no longer wants it. Irreversible — confirm the id "
+    "with nousviz_list_alerts first.",
+    {"alert_id": _str("The alert id to delete. Required."),
+     **_INSTANCE_PROP},
+    required=["alert_id"],
+)
+
+LIST_ANNOTATIONS_SCHEMA = _schema(
+    "nousviz_list_annotations",
+    "Read annotations back from NousViz — the durable notes and insights you (or the user) "
+    "previously recorded with nousviz_create_annotation. Call this EARLY when working with a "
+    "plugin's data so you recall what was already learned (known promos, data caveats, "
+    "definitions, prior findings) instead of re-deriving it. Filter by plugin, dataset, date "
+    "range, category or semantic_score.",
+    {"plugin_id": _str("Only annotations about this plugin's data."),
+     "dataset": _str("Only annotations about this dataset/table."),
+     "category": _str("Filter by category (e.g. note, promo, incident, definition)."),
+     "date_from": _str("ISO date lower bound."),
+     "date_to": _str("ISO date upper bound."),
+     "semantic_score": {"type": "string", "enum": ["useful", "neutral", "useless"],
+                        "description": "Filter by how useful the annotation was scored."},
+     "pinned": {"type": "boolean", "description": "Only pinned annotations."},
+     "limit": {"type": "integer", "description": "Max to return (default 200, server max 1000)."},
+     **_INSTANCE_PROP},
+)
+
 DASHBOARD_LINK_SCHEMA = _schema(
     "nousviz_dashboard_link",
     "Return the full URL for an existing NousViz dashboard slug. Note: dashboards the agent "
@@ -484,6 +558,56 @@ def handle_create_annotation(args: dict, **_kw) -> str:
         return _err(str(e))
 
 
+def _terse_alert(a: dict) -> dict:
+    keys = ("id", "name", "label", "plugin_id", "dataset", "metric", "aggregation",
+            "condition_type", "threshold", "min_baseline", "cooldown_hours",
+            "check_frequency", "enabled")
+    return {k: a.get(k) for k in keys if a.get(k) is not None}
+
+
+def handle_list_alerts(args: dict, **_kw) -> str:
+    try:
+        data = _client(args.get("instance")).list_alerts(
+            plugin_id=args.get("plugin_id"), enabled_only=bool(args.get("enabled_only")))
+        rows = data.get("alerts", data if isinstance(data, list) else [])
+        return _ok({"alerts": [_terse_alert(a) for a in rows]})
+    except NousVizError as e:
+        return _err(str(e))
+
+
+def handle_test_alert(args: dict, **_kw) -> str:
+    try:
+        return _ok(_client(args.get("instance")).test_alert(args["alert_id"]))
+    except (NousVizError, KeyError) as e:
+        return _err(str(e))
+
+
+def handle_update_alert(args: dict, **_kw) -> str:
+    try:
+        fields = {k: v for k, v in args.items()
+                  if v is not None and k not in ("instance", "alert_id")}
+        if not fields:
+            return _err("nousviz_update_alert: pass at least one field to change.")
+        return _ok(_client(args.get("instance")).update_alert(args["alert_id"], fields))
+    except (NousVizError, KeyError) as e:
+        return _err(str(e))
+
+
+def handle_delete_alert(args: dict, **_kw) -> str:
+    try:
+        return _ok(_client(args.get("instance")).delete_alert(args["alert_id"]))
+    except (NousVizError, KeyError) as e:
+        return _err(str(e))
+
+
+def handle_list_annotations(args: dict, **_kw) -> str:
+    try:
+        filters = {k: v for k, v in args.items() if v is not None and k != "instance"}
+        return _ok(_client(args.get("instance")).list_annotations(**filters))
+    except NousVizError as e:
+        return _err(str(e))
+
+
 def handle_dashboard_link(args: dict, **_kw) -> str:
     try:
         return _ok({"url": _client(args.get("instance")).dashboard_url(args["slug"])})
@@ -498,7 +622,12 @@ TOOLS = (
     ("nousviz_push",             PUSH_SCHEMA,             handle_push,             "📥"),
     ("nousviz_create_dashboard", CREATE_DASHBOARD_SCHEMA, handle_create_dashboard, "📊"),
     ("nousviz_create_alert",     CREATE_ALERT_SCHEMA,     handle_create_alert,     "🔔"),
+    ("nousviz_list_alerts",      LIST_ALERTS_SCHEMA,      handle_list_alerts,      "📋"),
+    ("nousviz_test_alert",       TEST_ALERT_SCHEMA,       handle_test_alert,       "🧪"),
+    ("nousviz_update_alert",     UPDATE_ALERT_SCHEMA,     handle_update_alert,     "🔧"),
+    ("nousviz_delete_alert",     DELETE_ALERT_SCHEMA,     handle_delete_alert,     "🗑️"),
     ("nousviz_create_annotation", CREATE_ANNOTATION_SCHEMA, handle_create_annotation, "📝"),
+    ("nousviz_list_annotations", LIST_ANNOTATIONS_SCHEMA, handle_list_annotations, "📖"),
     ("nousviz_dashboard_link",   DASHBOARD_LINK_SCHEMA,   handle_dashboard_link,   "🔗"),
     ("nousviz_share_dashboard",  SHARE_DASHBOARD_SCHEMA,  handle_share_dashboard,  "🌐"),
 )

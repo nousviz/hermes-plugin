@@ -51,6 +51,9 @@ to see what actually exists. Never invent table or column names.
   *important* — their curated metrics and known findings (defined KPIs, issues,
   what a number signals). Check it when answering an analytical question or
   deciding what to highlight; it carries domain meaning the schema cannot.
+- Also call **`nousviz_list_annotations`** early to recall what was already
+  learned about this data — prior corrections, known promos, caveats,
+  definitions. Don't re-derive something a past session already recorded.
 
 **2. Query.** Use `nousviz_query` with the exact table/column names from the
 catalog. Queries are read-only (the server enforces this). Iterate on the SQL
@@ -64,9 +67,23 @@ agent-created dashboards are owner-scoped, hand the user the **share link**
 (`share_url`, created automatically) — a plain dashboard URL won't open for
 them. `nousviz_share_dashboard` makes one on demand.
 
-**4. Watch.** For "tell me when X changes" requests, create a
-`nousviz_create_alert` on the numeric metric instead of leaving it to manual
-checking.
+**4. Watch — build alerts conversationally.** For "tell me when X changes"
+requests, build the alert with the user instead of leaving it to manual checking:
+- `nousviz_create_alert` on the numeric metric, then **`nousviz_test_alert`** to
+  dry-run it ("Would fire on N of M rows") so the user sees its behaviour before
+  trusting it.
+- **Kill noise before it starts.** On small/sparse data a drop/rise % alert
+  fires on meaningless rows (a program with one FTD last week). Set
+  `min_baseline` (via create or `nousviz_update_alert`) so it only fires when the
+  baseline average is meaningful, and set `cooldown_hours` to stop repeat-firing.
+  Re-test after tuning. If a user says an alert is noisy, raise `min_baseline`/
+  threshold and test again.
+- `nousviz_list_alerts` to show/reference existing alerts; `nousviz_update_alert`
+  to edit; `nousviz_delete_alert` to remove. The user manages alerts entirely
+  through you.
+- Alerts run on Postgres datasets with a single aggregated metric — they can't
+  express ratios or watch ClickHouse. For those (e.g. an ERS check), use
+  `nousviz_insights` or compute it with `nousviz_query`.
 
 **5. Remember.** When you learn something durable about the data — a promo that
 explains a spike, a sync that began failing on a date, a definition the user
