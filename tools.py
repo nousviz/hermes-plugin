@@ -76,6 +76,23 @@ QUERY_SCHEMA = _schema(
     required=["sql"],
 )
 
+CATALOG_SCHEMA = _schema(
+    "nousviz_catalog",
+    "Discover what data exists in NousViz before querying it. Call this FIRST whenever you are "
+    "unsure which tables or columns are available — it saves you from guessing SQL. Progressive "
+    "detail: with no arguments it returns a terse index (each plugin and its table names, row "
+    "counts, and column count); pass plugin_id to get that plugin's tables with their columns "
+    "and types; pass plugin_id AND table to get one table's full column schema. Results are "
+    "limited by this account's per-plugin access, so you only ever see data you may read. "
+    "Covers NousViz's Postgres-backed plugin tables; data in ClickHouse or MySQL engines is "
+    "queryable via nousviz_query with db_engine but is not listed here. This is read-only "
+    "metadata — it never returns row data.",
+    {"plugin_id": _str("Optional plugin slug to drill into (from the index). Omit for the "
+                       "top-level index of all accessible plugins."),
+     "table": _str("Optional table name for a full column schema; requires plugin_id."),
+     **_INSTANCE_PROP},
+)
+
 PUSH_SCHEMA = _schema(
     "nousviz_push",
     "Send a JSON payload into a NousViz inbound webhook endpoint, storing it as a data event. "
@@ -210,6 +227,59 @@ def handle_query(args: dict, **_kw) -> str:
         return _err(str(e))
 
 
+def _terse_index(raw: dict) -> dict:
+    """Shrink GET /api/catalog/tables to a token-cheap index: per plugin, each
+    table's name, estimated row count, and column count — but not the columns
+    themselves. The agent drills into a plugin/table for columns on demand."""
+    plugins = []
+    for p in raw.get("plugins", []):
+        tables = []
+        for t in p.get("tables", []):
+            tables.append({
+                "table": t.get("name"),
+                "rows": t.get("row_count_estimate"),
+                "columns": len(t.get("columns") or []),
+            })
+        plugins.append({"plugin_id": p.get("id"), "tables": tables})
+    return {
+        "plugins": plugins,
+        "hint": "Call nousviz_catalog with plugin_id to see a plugin's columns, "
+                "then plugin_id+table for one table's full schema.",
+    }
+
+
+def _terse_plugin(raw: dict) -> dict:
+    """Shrink one plugin's tables to name + {column: type} maps (drops
+    nullable/default, which the single-table view still carries)."""
+    tables = []
+    for t in raw.get("tables", []):
+        tables.append({
+            "table": t.get("name"),
+            "rows": t.get("row_count_estimate"),
+            "columns": {c.get("name"): c.get("data_type")
+                        for c in (t.get("columns") or [])},
+        })
+    out: dict[str, Any] = {"plugin_id": raw.get("plugin_id"), "tables": tables}
+    if raw.get("manifest_drift"):
+        out["manifest_drift"] = raw["manifest_drift"]
+    return out
+
+
+def handle_catalog(args: dict, **_kw) -> str:
+    try:
+        plugin_id = args.get("plugin_id")
+        table = args.get("table")
+        client = _client(args.get("instance"))
+        raw = client.catalog(plugin_id=plugin_id, table=table)
+        if plugin_id and table:
+            return _ok(raw)              # full single-table schema, as-is
+        if plugin_id:
+            return _ok(_terse_plugin(raw))
+        return _ok(_terse_index(raw))
+    except (NousVizError, KeyError) as e:
+        return _err(str(e))
+
+
 def handle_push(args: dict, **_kw) -> str:
     try:
         return _ok(_client(args.get("instance")).push(
@@ -269,6 +339,7 @@ def handle_dashboard_link(args: dict, **_kw) -> str:
 
 
 TOOLS = (
+    ("nousviz_catalog",          CATALOG_SCHEMA,          handle_catalog,          "🗂️"),
     ("nousviz_query",            QUERY_SCHEMA,            handle_query,            "🔍"),
     ("nousviz_push",             PUSH_SCHEMA,             handle_push,             "📥"),
     ("nousviz_create_dashboard", CREATE_DASHBOARD_SCHEMA, handle_create_dashboard, "📊"),

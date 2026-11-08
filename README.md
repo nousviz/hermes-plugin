@@ -12,6 +12,7 @@ conversationally; when a view proves useful it becomes a permanent dashboard.
 
 | Tool | What it does |
 |---|---|
+| `nousviz_catalog` | Discover which plugins, tables and columns exist before querying (progressive: index → plugin → table) |
 | `nousviz_query` | Read-only SQL over the platform's datasets (Postgres / ClickHouse / MySQL) |
 | `nousviz_push` | Land collected data via an inbound webhook endpoint |
 | `nousviz_create_dashboard` | Turn an exploration into a persistent dashboard, returns the URL |

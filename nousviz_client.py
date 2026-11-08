@@ -6,6 +6,11 @@ Every endpoint used here was verified against nousviz-app v1.0.6 source:
   (routes/auth.py; auth header on all later calls: X-Session-Token)
 - POST /api/query                 {sql, db_engine?, database?, max_rows?}
                                   -> {columns, types, rows, row_count}   (routes/query.py)
+- GET  /api/catalog/tables        -> {plugins: [{id, tables: [{name, plugin_id,
+                                  table_type, row_count_estimate, columns}]}]}
+- GET  /api/catalog/plugins/{id}/tables           one plugin (+ manifest_drift)
+- GET  /api/catalog/plugins/{id}/tables/{table}   full column schema (routes/catalog.py,
+                                  all datasets.read / viewer-level; Postgres tables only)
 - POST /api/dashboards/           {name, description?, widgets, layout?, sources}
                                   (routes/dashboards.py, needs dashboards.write)
 - PUT  /api/dashboards/{slug}     same body, full replace
@@ -103,6 +108,33 @@ class NousVizClient:
         if max_rows:
             body["max_rows"] = max_rows
         return self._request("POST", "/api/query", json_body=body)
+
+    # ── catalog ───────────────────────────────────────────────────────
+
+    def catalog(self, plugin_id: Optional[str] = None,
+                table: Optional[str] = None) -> dict:
+        """Read the NousViz data catalog (Postgres plugin tables).
+
+        Three levels of detail, matching the three catalog routes
+        (all require only viewer-level ``datasets.read``):
+
+        - no args          -> GET /api/catalog/tables
+                              every plugin the caller can access, grouped.
+        - plugin_id        -> GET /api/catalog/plugins/{plugin_id}/tables
+                              one plugin's tables (+ manifest_drift).
+        - plugin_id+table  -> GET /api/catalog/plugins/{plugin_id}/tables/{table}
+                              full column schema for one table.
+
+        The server scopes results to plugins the account is granted
+        (per-plugin ACL), so this never returns more than this agent may read.
+        """
+        if plugin_id and table:
+            return self._request(
+                "GET", f"/api/catalog/plugins/{plugin_id}/tables/{table}")
+        if plugin_id:
+            return self._request(
+                "GET", f"/api/catalog/plugins/{plugin_id}/tables")
+        return self._request("GET", "/api/catalog/tables")
 
     def push(self, slug: str, payload: Any, secret: Optional[str] = None) -> dict:
         """Send JSON to an inbound webhook endpoint (no session token needed)."""

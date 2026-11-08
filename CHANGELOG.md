@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 — data catalog
+
+- New `nousviz_catalog` tool: the agent can discover what data exists
+  before writing SQL, instead of guessing table and column names. Reads
+  NousViz's live catalog (`/api/catalog/*`, viewer-level `datasets.read`).
+- Progressive detail to keep context small: no args returns a terse index
+  (each plugin → its table names, row counts, column counts); `plugin_id`
+  returns that plugin's tables with `{column: type}` maps; `plugin_id` +
+  `table` returns one table's full column schema. The agent drills in only
+  as far as the question needs.
+- Results are scoped to the plugins the agent's account may read
+  (per-plugin ACL), so the catalog never exposes data the agent can't query.
+- Covers NousViz's Postgres-backed plugin tables; ClickHouse/MySQL data
+  stays queryable via `nousviz_query` with `db_engine` but isn't enumerated.
+
 ## 0.2.0 — multiple servers
 
 - One agent can now connect to several NousViz installs. Configure an
