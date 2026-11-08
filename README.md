@@ -15,7 +15,8 @@ conversationally; when a view proves useful it becomes a permanent dashboard.
 
 | Tool | What it does |
 |---|---|
-| `nousviz_catalog` | Discover which plugins, tables and columns exist before querying (progressive: index → plugin → table) |
+| `nousviz_catalog` | Discover plugins, tables and columns before querying — and, on drill-in, the operator's own labels/descriptions/semantic_type (progressive: index → plugin → table) |
+| `nousviz_insights` | Read the operator's curated metrics and findings (from `insights.yaml` / plugin `/insights`) — what *matters*, not just what exists |
 | `nousviz_query` | Read-only SQL over the platform's datasets (Postgres / ClickHouse / MySQL) |
 | `nousviz_push` | Land collected data via an inbound webhook endpoint |
 | `nousviz_create_dashboard` | Turn an exploration into a persistent dashboard, returns the URL |

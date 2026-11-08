@@ -11,6 +11,11 @@ Every endpoint used here was verified against nousviz-app v1.0.6 source:
 - GET  /api/catalog/plugins/{id}/tables           one plugin (+ manifest_drift)
 - GET  /api/catalog/plugins/{id}/tables/{table}   full column schema (routes/catalog.py,
                                   all datasets.read / viewer-level; Postgres tables only)
+- GET  /api/plugins/{id}          manifest + semantics (description, long_description,
+                                  datasets[label/description/grain/semantic_type]);
+                                  plugins.read / viewer-level (routes/plugins.py)
+- GET  /api/insights/             {insights, total} aggregated insight cards;
+                                  dashboards.read (routes/insights.py)
 - POST /api/dashboards/           {name, description?, widgets, layout?, sources}
                                   (routes/dashboards.py, needs dashboards.write)
 - PUT  /api/dashboards/{slug}     same body, full replace
@@ -137,6 +142,26 @@ class NousVizClient:
             return self._request(
                 "GET", f"/api/catalog/plugins/{plugin_id}/tables")
         return self._request("GET", "/api/catalog/tables")
+
+    def plugin_detail(self, plugin_id: str) -> dict:
+        """GET /api/plugins/{plugin_id} (needs viewer-level ``plugins.read``).
+
+        Returns the plugin manifest, including its author-written semantics:
+        ``description``, ``long_description``, and a ``datasets`` list whose
+        entries carry ``name, label, description, grain, semantic_type``. Used
+        to layer meaning onto the structural catalog. Does NOT expose connection
+        secrets — those live behind ``plugins.configure`` (admin), which the
+        agent's analyst role lacks.
+        """
+        return self._request("GET", f"/api/plugins/{plugin_id}")
+
+    def insights(self, limit: int = 20) -> dict:
+        """GET /api/insights/ (needs ``dashboards.read``) -> {insights, total}.
+
+        Aggregates Tier-1 (insights.yaml SQL cards) + Tier-2 (plugin /insights
+        endpoints) across installed plugins, sorted by severity.
+        """
+        return self._request("GET", f"/api/insights/?limit={int(limit)}")
 
     def push(self, slug: str, payload: Any, secret: Optional[str] = None) -> dict:
         """Send JSON to an inbound webhook endpoint (no session token needed)."""

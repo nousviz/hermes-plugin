@@ -1,9 +1,10 @@
 name: nousviz
-version: 0.5.0
+version: 0.6.0
 description: "Give Hermes a data platform: discover what data exists, query it with SQL, build dashboards and alerts by conversation, and stream the agent's own activity into a Mission Control dashboard. Works against any stock NousViz >= 1.0.6 install."
 author: "NousViz (statsdrone)"
 provides_tools:
   - nousviz_catalog
+  - nousviz_insights
   - nousviz_query
   - nousviz_push
   - nousviz_create_dashboard

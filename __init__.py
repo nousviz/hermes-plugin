@@ -2,7 +2,8 @@
 
 Connects Hermes to one or more self-hosted NousViz (>= 1.0.6) installs:
 
-- ``nousviz_catalog``          discover which plugins/tables/columns exist
+- ``nousviz_catalog``          discover plugins/tables/columns + operator semantics
+- ``nousviz_insights``         read the operator's curated metrics/findings
 - ``nousviz_query``            SQL over the platform's data (read-only)
 - ``nousviz_push``             land collected data via inbound webhooks
 - ``nousviz_create_dashboard`` turn an exploration into a persistent dashboard

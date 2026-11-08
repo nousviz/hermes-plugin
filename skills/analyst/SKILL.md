@@ -38,6 +38,14 @@ to see what actually exists. Never invent table or column names.
   a NousViz bug — and tell them which plugin they'd need granted.
 - The catalog covers Postgres plugin tables. ClickHouse/MySQL data is still
   queryable via `nousviz_query` with `db_engine`, it just isn't listed.
+- When you drill into a plugin, the catalog also returns the **operator's own
+  semantics** — each table's `label`, `description`, `semantic_type`, and the
+  plugin's description. Prefer these definitions over inferring meaning from
+  column names; they're the ground truth for what the data means.
+- Then call **`nousviz_insights`** to read what the operator considers
+  *important* — their curated metrics and known findings (defined KPIs, issues,
+  what a number signals). Check it when answering an analytical question or
+  deciding what to highlight; it carries domain meaning the schema cannot.
 
 **2. Query.** Use `nousviz_query` with the exact table/column names from the
 catalog. Queries are read-only (the server enforces this). Iterate on the SQL

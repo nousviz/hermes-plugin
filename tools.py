@@ -86,10 +86,27 @@ CATALOG_SCHEMA = _schema(
     "limited by this account's per-plugin access, so you only ever see data you may read. "
     "Covers NousViz's Postgres-backed plugin tables; data in ClickHouse or MySQL engines is "
     "queryable via nousviz_query with db_engine but is not listed here. This is read-only "
-    "metadata — it never returns row data.",
+    "metadata — it never returns row data. When you drill into a plugin (pass plugin_id), the "
+    "result also carries the operator's own semantics where they defined them — each table's "
+    "label, description and semantic_type, plus the plugin's description — so prefer those "
+    "meanings over guessing from column names. For curated metrics and findings, also see "
+    "nousviz_insights.",
     {"plugin_id": _str("Optional plugin slug to drill into (from the index). Omit for the "
                        "top-level index of all accessible plugins."),
      "table": _str("Optional table name for a full column schema; requires plugin_id."),
+     **_INSTANCE_PROP},
+)
+
+INSIGHTS_SCHEMA = _schema(
+    "nousviz_insights",
+    "Read the operator's curated insights from NousViz — the metrics and findings they (or the "
+    "plugin authors) defined as worth surfacing, each with a severity and a human description. "
+    "Use this to learn what MATTERS in the data, not just what exists: it's where domain meaning "
+    "the schema can't tell you lives (defined KPIs, known issues, what a number signals). Good to "
+    "check alongside nousviz_catalog when answering an analytical question or deciding what to "
+    "highlight. Read-only.",
+    {"plugin_id": _str("Optional plugin slug to show only that plugin's insights."),
+     "limit": {"type": "integer", "description": "Max insights to return (default 20)."},
      **_INSTANCE_PROP},
 )
 
@@ -284,18 +301,45 @@ def _terse_index(raw: dict) -> dict:
     }
 
 
-def _terse_plugin(raw: dict) -> dict:
-    """Shrink one plugin's tables to name + {column: type} maps (drops
-    nullable/default, which the single-table view still carries)."""
+_SEMANTIC_KEYS = ("label", "description", "grain", "semantic_type")
+
+
+def _dataset_semantics(detail: Optional[dict]) -> dict:
+    """Map dataset name -> {label, description, grain, semantic_type} from a
+    GET /api/plugins/{id} response. Empty when detail is missing."""
+    out: dict[str, dict] = {}
+    if not detail:
+        return out
+    for ds in (detail.get("datasets") or []):
+        if isinstance(ds, dict) and ds.get("name"):
+            sem = {k: ds[k] for k in _SEMANTIC_KEYS if ds.get(k)}
+            if sem:
+                out[ds["name"]] = sem
+    return out
+
+
+def _terse_plugin(raw: dict, detail: Optional[dict] = None) -> dict:
+    """One plugin's tables as name + {column: type} maps, with the operator's
+    manifest semantics (label/description/grain/semantic_type) layered on each
+    table and the plugin's own description/long_description surfaced."""
+    sem_by_table = _dataset_semantics(detail)
     tables = []
     for t in raw.get("tables", []):
-        tables.append({
-            "table": t.get("name"),
+        name = t.get("name")
+        entry: dict[str, Any] = {
+            "table": name,
             "rows": t.get("row_count_estimate"),
             "columns": {c.get("name"): c.get("data_type")
                         for c in (t.get("columns") or [])},
-        })
+        }
+        entry.update(sem_by_table.get(name, {}))  # label/description/grain/semantic_type
+        tables.append(entry)
     out: dict[str, Any] = {"plugin_id": raw.get("plugin_id"), "tables": tables}
+    if detail:
+        if detail.get("description"):
+            out["plugin_description"] = detail["description"]
+        if detail.get("long_description"):
+            out["plugin_long_description"] = detail["long_description"]
     if raw.get("manifest_drift"):
         out["manifest_drift"] = raw["manifest_drift"]
     return out
@@ -307,11 +351,35 @@ def handle_catalog(args: dict, **_kw) -> str:
         table = args.get("table")
         client = _client(args.get("instance"))
         raw = client.catalog(plugin_id=plugin_id, table=table)
-        if plugin_id and table:
-            return _ok(raw)              # full single-table schema, as-is
-        if plugin_id:
-            return _ok(_terse_plugin(raw))
-        return _ok(_terse_index(raw))
+        if not plugin_id:
+            return _ok(_terse_index(raw))   # structural index, no semantics
+        # Drilling into a plugin -> layer in operator semantics (best effort;
+        # a server that lacks the endpoint or the perm just omits them).
+        try:
+            detail = client.plugin_detail(plugin_id)
+        except NousVizError:
+            detail = None
+        if table:
+            # full single-table schema + this dataset's semantics, if any
+            sem = _dataset_semantics(detail).get(table)
+            if sem and isinstance(raw, dict):
+                raw = {**raw, **sem}
+            return _ok(raw)
+        return _ok(_terse_plugin(raw, detail))
+    except (NousVizError, KeyError) as e:
+        return _err(str(e))
+
+
+def handle_insights(args: dict, **_kw) -> str:
+    try:
+        data = _client(args.get("instance")).insights(limit=int(args.get("limit") or 20))
+        rows = data.get("insights", data if isinstance(data, list) else [])
+        wanted = args.get("plugin_id")
+        if wanted:
+            rows = [r for r in rows if r.get("plugin_id") == wanted]
+        terse = [{k: r.get(k) for k in ("plugin_id", "title", "description", "severity")
+                  if r.get(k) is not None} for r in rows]
+        return _ok({"insights": terse, "total": data.get("total", len(terse))})
     except (NousVizError, KeyError) as e:
         return _err(str(e))
 
@@ -388,6 +456,7 @@ def handle_dashboard_link(args: dict, **_kw) -> str:
 
 TOOLS = (
     ("nousviz_catalog",          CATALOG_SCHEMA,          handle_catalog,          "🗂️"),
+    ("nousviz_insights",         INSIGHTS_SCHEMA,         handle_insights,         "💡"),
     ("nousviz_query",            QUERY_SCHEMA,            handle_query,            "🔍"),
     ("nousviz_push",             PUSH_SCHEMA,             handle_push,             "📥"),
     ("nousviz_create_dashboard", CREATE_DASHBOARD_SCHEMA, handle_create_dashboard, "📊"),

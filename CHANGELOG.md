@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0 — the agent reads the operator's meaning
+
+- `nousviz_catalog` now layers the operator's **manifest semantics** onto the
+  structural catalog when you drill into a plugin: each table's `label`,
+  `description`, `grain` and `semantic_type` (from the plugin's `datasets:`
+  block), plus the plugin's own `description`/`long_description`. Reads
+  `GET /api/plugins/{id}` (`plugins.read`, which the analyst role has). The
+  agent now prefers the operator's definitions over guessing from column names.
+- New `nousviz_insights` tool reads `GET /api/insights/` (`dashboards.read`) —
+  the curated metrics and findings defined in plugins' `insights.yaml` (Tier 1)
+  and `/insights` endpoints (Tier 2), each with a severity and description.
+  Optional `plugin_id` filter. This is where "what MATTERS" lives.
+- Both are best-effort and safe: semantics enrichment degrades to
+  structure-only if a server lacks the endpoint, and neither tool can reach
+  connection secrets (those sit behind `plugins.configure`/admin, which the
+  agent's role does not hold).
+- The `nousviz:analyst` skill now tells the agent to read these meanings first.
+
 ## 0.5.0 — annotations (the agent's write-back memory)
 
 - New `nousviz_create_annotation` tool: the agent can record durable notes and
