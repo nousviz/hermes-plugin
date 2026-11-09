@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.0 — onboard new users + builder feedback destination
+
+- `/nousviz` now greets new users with a getting-started line, and a new
+  **`/nousviz coach`** scores your data's **semantic coverage** (how many tables
+  carry a `datasets:` description) and names the biggest gaps to document — so a
+  new operator knows exactly how to make the agent understand their data.
+- `nousviz_feedback` can now ship to a **builder destination** baked into the
+  plugin (`BUILDER_FEEDBACK_URL` in `feedback.py`), so feedback reaches the
+  plugin builder from *every* install — not just the local operator. The posted
+  JSON carries a Slack-renderable `text` plus structured fields, so the URL can
+  be a Slack incoming webhook (quick) or a collector you host that forwards to
+  Slack + email via Resend (recommended — keeps the Resend key server-side; a
+  Resend API key must never ship in a public plugin). Optional
+  `BUILDER_FEEDBACK_TOKEN` is sent as `X-Feedback-Token` for a collector.
+
 ## 0.9.0 — feedback to the plugin builder
 
 - New `nousviz_feedback` tool: the agent routes a thumbs up/down plus a note to

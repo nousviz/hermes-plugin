@@ -198,6 +198,54 @@ def _instances_listing() -> str:
             "\n(switch with /nousviz use <name>)")
 
 
+def _coach() -> str:
+    """Score how well-documented the connected data is (the agent is only as good
+    as the semantics it can read) and point at the biggest gaps to fix."""
+    try:
+        client = _get_client()
+        catalog = client.catalog()
+    except NousVizError as e:
+        return f"❌ {e}"
+    plugins = catalog.get("plugins", []) if isinstance(catalog, dict) else []
+    if not plugins:
+        return ("No data is visible to the agent yet. Install and sync at least one NousViz "
+                "plugin, then run /nousviz coach again. The agent reads your plugins' tables "
+                "and the semantics you give them.")
+    total = documented = 0
+    rows, gaps = [], []
+    for p in plugins:
+        pid = p.get("id")
+        tables = [t.get("name") for t in p.get("tables", []) if t.get("name")]
+        if not tables:
+            continue
+        described: set[str] = set()
+        try:
+            detail = client.plugin_detail(pid)
+            for ds in (detail.get("datasets") or []):
+                if isinstance(ds, dict) and ds.get("name") and ds.get("description"):
+                    described.add(ds["name"])
+        except NousVizError:
+            pass
+        total += len(tables)
+        documented += len(described & set(tables))
+        rows.append(f"  {pid}: {len(described & set(tables))}/{len(tables)} tables documented")
+        for t in tables:
+            if t not in described:
+                gaps.append(f"{pid}.{t}")
+    pct = round(100 * documented / total) if total else 0
+    out = [f"📊 Semantic coverage: {documented}/{total} tables documented ({pct}%).", *rows]
+    if gaps:
+        out.append("Biggest wins — add a `datasets:` entry (label + description with a "
+                   "column glossary + semantic_type) for:")
+        out.append("  " + ", ".join(gaps[:8]) + (" …" if len(gaps) > 8 else ""))
+        out.append("The more you document, the better the agent understands your data instead "
+                   "of guessing from column names.")
+    else:
+        out.append("Every visible table is documented — the agent is working from your "
+                   "definitions. 🎯")
+    return "\n".join(out)
+
+
 def _status_command(raw_args: str) -> str:
     """/nousviz — status; 'list' — instances; 'use <name>' — switch;
     'mission-control' — provision the agent-activity dashboard."""
@@ -213,6 +261,9 @@ def _status_command(raw_args: str) -> str:
                     f"Telemetry streams when telemetry_webhook_slug is configured.")
         except NousVizError as e:
             return f"❌ Mission Control provisioning failed: {e}"
+
+    if low == "coach":
+        return _coach()
 
     if low in ("list", "instances"):
         return _instances_listing()
@@ -243,6 +294,10 @@ def _status_command(raw_args: str) -> str:
         lines.append(f"Tools: {tool_names}.")
         lines.append("Commands: /nousviz list · /nousviz use <name> · "
                      "/nousviz mission-control.")
+        lines.append(
+            "New here? Try \"What data do you have access to?\" to explore, then ask a "
+            "question or say \"build me a dashboard of …\". Tip: the richer your plugins' "
+            "dataset labels and descriptions, the better the answers — see /nousviz coach.")
         return "\n".join(lines)
     except NousVizError as e:
         return f"❌ NousViz connection failed: {e}"
@@ -263,9 +318,10 @@ def register(ctx) -> None:
 
     ctx.register_command(
         name="nousviz", handler=_status_command,
-        args_hint="[list | use <name> | mission-control]",
+        args_hint="[list | use <name> | coach | mission-control]",
         description="NousViz connection status; 'list'/'use <name>' switch between "
-                    "instances; 'mission-control' provisions the agent-activity dashboard")
+                    "instances; 'coach' scores your data's semantic coverage and names the "
+                    "gaps to document; 'mission-control' provisions the agent-activity dashboard")
 
     # Bundled "NousViz Analyst" skill -> nousviz:analyst. Coaches catalog-first
     # data work so plain-language data questions don't fall through to generic

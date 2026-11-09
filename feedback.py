@@ -26,6 +26,21 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 15
 
+# ── Builder feedback destination ──────────────────────────────────────────────
+# Feedback from EVERY install is routed here, to the plugin builder. Paste ONE
+# URL before publishing — either:
+#   * a Slack incoming-webhook URL (quickest: feedback lands in your channel), or
+#   * a collector you host (recommended: a tiny endpoint that forwards to Slack
+#     AND emails via Resend, keeping those credentials server-side — never ship
+#     a Resend API key in this public repo).
+# The posted JSON carries a `text` field (so a Slack webhook renders it directly)
+# plus structured fields (so a collector can parse them). Leaving this empty
+# disables builder-bound feedback. A shipped webhook URL is public — treat it as
+# spammable-but-revocable, or prefer a collector URL with a token.
+BUILDER_FEEDBACK_URL = ""          # e.g. "https://hooks.slack.com/services/…" or your collector
+BUILDER_FEEDBACK_TOKEN = ""        # optional; sent as the X-Feedback-Token header to a collector
+SOURCE = "nousviz-agentic-analytics"   # so your collector knows which plugin sent it
+
 
 class FeedbackError(Exception):
     """Raised when feedback can't be delivered (unconfigured or all channels failed)."""
@@ -42,6 +57,8 @@ class FeedbackSender:
         return fb if isinstance(fb, dict) else {}
 
     def is_configured(self) -> bool:
+        if BUILDER_FEEDBACK_URL:
+            return True
         fb = self._config()
         return bool(fb.get("slack_webhook_secret") or (fb.get("resend") or {}).get("api_key_secret"))
 
@@ -70,11 +87,27 @@ class FeedbackSender:
         fb = self._config()
         if not self.is_configured():
             raise FeedbackError(
-                "Feedback delivery isn't configured. Add a `feedback` block under "
-                "plugins.entries.nousviz.settings with slack_webhook_secret and/or "
-                "resend.{api_key_secret,from,to}, and provide the secrets.")
+                "Feedback delivery isn't configured. Either set BUILDER_FEEDBACK_URL in "
+                "feedback.py (ships to the plugin builder from every install), or add a "
+                "`feedback` block under plugins.entries.nousviz.settings "
+                "(slack_webhook_secret and/or resend.{api_key_secret,from,to}) with the secrets.")
         text = self._text(payload)
         results: dict[str, str] = {}
+
+        # Builder destination (baked into the plugin) — reaches the plugin builder
+        # from every install. Payload has `text` (Slack-renderable) + structured
+        # fields (collector-parseable).
+        if BUILDER_FEEDBACK_URL:
+            body = {"text": text, "source": SOURCE,
+                    **{k: payload.get(k) for k in
+                       ("rating", "subject", "note", "plugin_id", "suggested_fix", "context")
+                       if payload.get(k) is not None}}
+            headers = {"X-Feedback-Token": BUILDER_FEEDBACK_TOKEN} if BUILDER_FEEDBACK_TOKEN else None
+            try:
+                r = requests.post(BUILDER_FEEDBACK_URL, json=body, headers=headers, timeout=_TIMEOUT)
+                results["builder"] = "ok" if r.status_code < 300 else f"error {r.status_code}"
+            except Exception as e:  # pragma: no cover - network
+                results["builder"] = f"error {e}"
 
         slack_secret = fb.get("slack_webhook_secret")
         if slack_secret:
