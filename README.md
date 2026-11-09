@@ -11,6 +11,9 @@ holding your data or your model.
 **NousViz is the system of record. Hermes is data in motion.** The agent explores
 conversationally; when a view proves useful it becomes a permanent dashboard.
 
+> **New here?** [docs/CONNECTING.md](docs/CONNECTING.md) is the full one-page setup —
+> what you need, config, and your first questions.
+
 ## What the agent can do
 
 | Tool | What it does |
