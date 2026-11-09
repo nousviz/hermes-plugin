@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.0 — builder feedback destination goes live
+
+- The builder feedback destination (`BUILDER_FEEDBACK_URL` in `feedback.py`) is
+  now wired to a hosted collector, so `nousviz_feedback` routes a thumbs
+  up/down plus a note from **every** install to the plugin builder. The
+  collector forwards to Slack and emails via Resend; both credentials stay
+  server-side (the public repo ships only the collector URL and a revocable
+  `X-Feedback-Token`, never a Slack webhook or Resend key). No per-install
+  `feedback` config block is required anymore — it still works as an override
+  for operators who want their own destination.
+
 ## 0.10.0 — onboard new users + builder feedback destination
 
 - `/nousviz` now greets new users with a getting-started line, and a new

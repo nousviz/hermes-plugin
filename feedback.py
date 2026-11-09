@@ -37,8 +37,8 @@ _TIMEOUT = 15
 # plus structured fields (so a collector can parse them). Leaving this empty
 # disables builder-bound feedback. A shipped webhook URL is public — treat it as
 # spammable-but-revocable, or prefer a collector URL with a token.
-BUILDER_FEEDBACK_URL = ""          # e.g. "https://hooks.slack.com/services/…" or your collector
-BUILDER_FEEDBACK_TOKEN = ""        # optional; sent as the X-Feedback-Token header to a collector
+BUILDER_FEEDBACK_URL = "https://nousviz-feedback.johnwrightgaming.workers.dev"   # collector → Slack + Resend
+BUILDER_FEEDBACK_TOKEN = "Tji82fjiehbiwd7R@389bnw#2225"   # sent as the X-Feedback-Token header to the collector
 SOURCE = "nousviz-agentic-analytics"   # so your collector knows which plugin sent it
 
 
