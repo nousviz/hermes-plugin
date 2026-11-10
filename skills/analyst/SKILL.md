@@ -1,7 +1,7 @@
 ---
 name: analyst
 description: Work with the user's data in NousViz. Use whenever the user asks what data, tables, datasets or columns are available, what you can analyze or report on, to answer a question from their data, or to build a chart, dashboard or alert. Always discover the data with nousviz_catalog BEFORE writing SQL, and never answer a "what data do you have" question generically — look first.
-version: 0.1.0
+version: 0.2.0
 metadata:
   hermes:
     tags: [nousviz, data, analytics, sql, dashboards]
@@ -54,6 +54,9 @@ to see what actually exists. Never invent table or column names.
 - Also call **`nousviz_list_annotations`** early to recall what was already
   learned about this data — prior corrections, known promos, caveats,
   definitions. Don't re-derive something a past session already recorded.
+- As you read the catalog, **note which tables carry operator semantics and
+  which don't** — that coverage is your confidence signal (see *Be honest about
+  the semantic score* below). Undocumented tables are low-confidence source data.
 
 **2. Query.** Use `nousviz_query` with the exact table/column names from the
 catalog. Queries are read-only (the server enforces this). Iterate on the SQL
@@ -109,10 +112,41 @@ their terms in the answer. Surface genuinely notable things you see in the data
 (a metric that dropped to zero, a sync that's been failing), not just the number
 they asked for — that's what makes you an analyst rather than a query runner.
 
+## Be honest about the semantic score
+
+You are only as good as the semantics under the data. A table with a `datasets:`
+label, description and column glossary → you answer from **meaning**. A table
+with none → you're inferring from column names, and the answer can be wrong in
+ways neither you nor the user can see. The fix is not to hide that — it's to make
+it visible, because a confident-sounding wrong answer is worse than a flagged
+soft one. This applies to **any** connected data, whatever its source (Postgres,
+ClickHouse, MySQL, any plugin): the score is about whether the data carries
+meaning, not where it's stored.
+
+- **Read coverage as you go.** From the catalog you can already tell which tables
+  carry a `description`/semantics and which don't. That ratio *is* a semantic
+  score — the same one `/nousviz coach` reports as
+  "📊 Semantic coverage: X/Y tables documented (Z%)".
+- **Volunteer it on soft answers.** When an answer leans on poorly-documented
+  data, add a short note in your own words — name the undocumented table, say you
+  inferred meaning from column names so the result is approximate, and point to
+  `/nousviz coach` for the full score and what to document. Don't bury it.
+- **When the user asks why the analytics seem off, diagnose the semantics
+  first.** Before re-running the query or second-guessing the numbers, check
+  coverage: undocumented tables, missing metric definitions, no curated insights.
+  Most of the time "the agent is off" is "the data isn't labeled." Say so, name
+  the specific gaps, and point to `/nousviz coach`.
+- **Then show the fix.** A low score is a to-do list, not a dead end. Name the
+  two or three tables whose `datasets:` entries (label, a column glossary in the
+  `description`, `semantic_type`, `grain`) would most improve answers. The score
+  goes up and the answers get better — that's the loop to put the user on.
+
 ## Don't
 
 - Don't answer "what data do you have?" from general knowledge — call
   `nousviz_catalog`.
+- Don't present an answer drawn from undocumented data as authoritative — flag
+  the semantic score and say it's approximate.
 - Don't guess table or column names — look them up.
 - Don't write anything but read-only SQL.
 - Don't hand over a plain dashboard URL when the user needs to view it — use the

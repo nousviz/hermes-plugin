@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0 — the analyst is honest about the semantic score
+
+- The `nousviz:analyst` skill now treats **semantic coverage as a confidence
+  signal** and surfaces it instead of hiding it. The agent is only as good as the
+  semantics under the data — a table with a `datasets:` label/description/glossary
+  is answered from meaning; an undocumented table is a guess from column names.
+- Three new behaviors: (1) **read coverage as it goes** — undocumented tables are
+  low-confidence source data; (2) **volunteer a semantic score on soft answers** —
+  name the undocumented table, say the result is approximate, point to
+  `/nousviz coach`; (3) **when the user asks why analytics seem off, diagnose the
+  semantics first** — most "the agent is off" is "the data isn't labeled" — then
+  name the specific gaps and the `datasets:` entries that would most improve
+  answers. Applies to any connected data regardless of source
+  (Postgres/ClickHouse/MySQL/any plugin). Skill trigger wording is unchanged.
+
 ## 0.11.0 — builder feedback destination goes live
 
 - The builder feedback destination (`BUILDER_FEEDBACK_URL` in `feedback.py`) is
