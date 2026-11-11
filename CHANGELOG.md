@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 — the semantic score gets a meter
+
+- `/nousviz coach` now renders the semantic-coverage score as a fixed-width
+  **ASCII meter** (`██████████ 100%`) — overall and per plugin — instead of a
+  bare percentage. It's text-only (no color), so it renders identically in the
+  CLI, Telegram and ChatGPT surfaces. No new tools, hooks or permissions; the
+  score, the data read and the gap list are unchanged.
+
 ## 0.12.0 — the analyst is honest about the semantic score
 
 - The `nousviz:analyst` skill now treats **semantic coverage as a confidence

@@ -198,6 +198,13 @@ def _instances_listing() -> str:
             "\n(switch with /nousviz use <name>)")
 
 
+def _meter(pct: int, cells: int = 10) -> str:
+    """A fixed-width ASCII bar for a 0–100 percentage (text-only, no color — it
+    renders the same in the CLI, Telegram and ChatGPT surfaces)."""
+    filled = max(0, min(cells, round(pct * cells / 100)))
+    return "█" * filled + "░" * (cells - filled)
+
+
 def _coach() -> str:
     """Score how well-documented the connected data is (the agent is only as good
     as the semantics it can read) and point at the biggest gaps to fix."""
@@ -226,14 +233,17 @@ def _coach() -> str:
                     described.add(ds["name"])
         except NousVizError:
             pass
+        n_doc = len(described & set(tables))
         total += len(tables)
-        documented += len(described & set(tables))
-        rows.append(f"  {pid}: {len(described & set(tables))}/{len(tables)} tables documented")
+        documented += n_doc
+        p_pct = round(100 * n_doc / len(tables))
+        rows.append(f"  {_meter(p_pct)} {p_pct:>3}%  {pid}: {n_doc}/{len(tables)} tables documented")
         for t in tables:
             if t not in described:
                 gaps.append(f"{pid}.{t}")
     pct = round(100 * documented / total) if total else 0
-    out = [f"📊 Semantic coverage: {documented}/{total} tables documented ({pct}%).", *rows]
+    out = [f"📊 Semantic coverage  {_meter(pct)} {pct:>3}%  "
+           f"({documented}/{total} tables documented)", *rows]
     if gaps:
         out.append("Biggest wins — add a `datasets:` entry (label + description with a "
                    "column glossary + semantic_type) for:")
