@@ -1,7 +1,7 @@
 ---
 name: analyst
 description: Work with the user's data in NousViz. Use whenever the user asks what data, tables, datasets or columns are available, what you can analyze or report on, to answer a question from their data, or to build a chart, dashboard or alert. Always discover the data with nousviz_catalog BEFORE writing SQL, and never answer a "what data do you have" question generically — look first.
-version: 0.2.0
+version: 0.3.0
 metadata:
   hermes:
     tags: [nousviz, data, analytics, sql, dashboards]
@@ -141,10 +141,29 @@ meaning, not where it's stored.
   `description`, `semantic_type`, `grain`) would most improve answers. The score
   goes up and the answers get better — that's the loop to put the user on.
 
+## Close the loop: invite feedback
+
+Feedback flows back to the person who maintains this plugin, so the defaults get
+better for everyone. Make sure the user knows it exists — then route it.
+
+- **Educate once.** Early in a session — after your first substantive answer, or
+  right after you build an alert or dashboard — tell the user, in **one short
+  line**, that they can rate any answer 👍/👎 and it reaches the plugin builder.
+  Say it once per session; don't repeat it every turn or nag.
+- **Route a rating when they give one.** When the user reacts to an answer,
+  alert, or insight — "that's wrong", "perfect", "too noisy", "the column isn't
+  labeled" — call **`nousviz_feedback`** with their `rating` (up/down), the
+  `subject`, and their `note` in their own words. Add a `suggested_fix` when one
+  is clear (e.g. "add a column glossary for rs_com", "raise default min_baseline").
+- **It complements fixing the issue, not replaces it.** Still tune the noisy
+  alert or flag the semantic gap now — *and* send feedback so the default
+  improves for the next user.
+
 ## Don't
 
 - Don't answer "what data do you have?" from general knowledge — call
   `nousviz_catalog`.
+- Don't spam the feedback invite — one brief mention per session is enough.
 - Don't present an answer drawn from undocumented data as authoritative — flag
   the semantic score and say it's approximate.
 - Don't guess table or column names — look them up.

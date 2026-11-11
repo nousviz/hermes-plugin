@@ -308,6 +308,9 @@ def _status_command(raw_args: str) -> str:
             "New here? Try \"What data do you have access to?\" to explore, then ask a "
             "question or say \"build me a dashboard of …\". Tip: the richer your plugins' "
             "dataset labels and descriptions, the better the answers — see /nousviz coach.")
+        lines.append(
+            "You can rate any answer 👍/👎 — just tell me (e.g. \"👍 that was accurate\" "
+            "or \"👎 that alert was noisy\") and it reaches the plugin builder.")
         return "\n".join(lines)
     except NousVizError as e:
         return f"❌ NousViz connection failed: {e}"

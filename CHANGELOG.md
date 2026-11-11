@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.0 — the agent invites feedback
+
+- The `nousviz:analyst` skill now **educates the user that feedback exists**: once
+  per session (after the first substantive answer, or after building an alert or
+  dashboard) the agent mentions in one line that they can rate any answer 👍/👎
+  and it reaches the plugin builder — then routes a rating through
+  `nousviz_feedback` when the user gives one. One mention per session, no nagging.
+- The `/nousviz` greeting gains a matching one-line hint, so the feedback path is
+  discoverable even before the agent brings it up. No new tools, hooks or
+  permissions; feedback still delivers to the builder collector wired in 0.11.0.
+
 ## 0.13.0 — the semantic score gets a meter
 
 - `/nousviz coach` now renders the semantic-coverage score as a fixed-width
